@@ -138,7 +138,8 @@ orphans AS (
         ON lower(p.qe) = lower(m.pdr_name)
     LEFT JOIN pdr_inventory.lookup_verato_aa v
         ON upper(v.qe) = upper(m.verato_name)
-        AND upper(regexp_replace(regexp_replace(v.assigning_authority, '\.DUPLICATE\d*$', ''),
+        AND upper(regexp_replace(regexp_replace(v.assigning_authority,
+            '\.(DUPLICATE|DUPLICATE1|DUPLICATE2|DUPLICATE3)$', ''),
             CASE WHEN upper(m.verato_name) = 'BRONX' THEN '_' ELSE '' END,
             CASE WHEN upper(m.verato_name) = 'BRONX' THEN ' ' ELSE '' END
         )) = upper(p.assigning_authority)
