@@ -141,7 +141,7 @@ orphans AS (
         AND upper(regexp_replace(regexp_replace(v.assigning_authority, '\.DUPLICATE\d*$', ''),
             CASE WHEN upper(m.verato_name) = 'BRONX' THEN '_' ELSE '' END,
             CASE WHEN upper(m.verato_name) = 'BRONX' THEN ' ' ELSE '' END
-        )) = p.assigning_authority
+        )) = upper(p.assigning_authority)
     WHERE v.assigning_authority IS NULL
 )
 
