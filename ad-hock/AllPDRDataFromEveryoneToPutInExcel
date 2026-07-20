@@ -1,0 +1,109 @@
+/*
+Expected cost/run: ~$0.59 (117.84 GB scanned @ $5/TB for 10 days)
+Expected runtime: ~41 seconds
+
+Goal:
+- Show daily submission counts for ALL assigning authorities in the PDR
+  (not just hospitals — everyone).
+- Broken out by QE, assigning authority, day, data type (CCD/TRN/ORU), and path type.
+- Includes ALL data paths: PROCESSED, ERROR, BACKLOG, or NORMAL.
+- Handles key structures:
+    processed/assigningAuthority/doctype/...
+    error/assigningAuthority/doctype/...
+    backload/assigningAuthority/doctype/...
+    assigningAuthority/doctype/...
+- Designed to export to Excel for ad-hoc analysis and pivoting.
+
+How to use:
+- Adjust lookback_days in config.
+- Export results to CSV, open in Excel.
+- Pivot by QE, assigning_authority, data_type, path_type, etc.
+Where to put
+- https://nyehealth.sharepoint.com/:x:/s/Extranet-PrimaryDocumentRepository/IQD1yTbmf9qhSbduVJ5qozcQAV-XwaT9lD0VesQ3Cr3JNrw?e=E6eA4z
+
+*/
+
+WITH config AS (
+    SELECT
+        DATE '2026-05-01' AS start_day,                     -- << CHANGE THIS: first day you need
+        date_add('day', -2, current_date) AS end_day,       -- today in UTC minus 2; inventory partition is reliable
+        2  AS inventory_snapshot_offset_days
+),
+date_range AS (
+    SELECT
+        c.start_day,
+        c.end_day,
+        c.inventory_snapshot_offset_days
+    FROM config c
+),
+days AS (
+    SELECT
+        d AS target_day
+    FROM date_range c
+    CROSS JOIN UNNEST(sequence(c.start_day, c.end_day, INTERVAL '1' DAY)) AS t(d)
+),
+params AS (
+    SELECT
+        d.target_day,
+        CAST(d.target_day AS timestamp) AS day_start_ts,
+        CAST(date_add('day', 1, d.target_day) AS timestamp) AS day_end_ts,
+        date_format(
+            date_add('day', c.inventory_snapshot_offset_days, d.target_day),
+            '%Y-%m-%d-01-00'
+        ) AS dt_target_partition
+    FROM days d
+    CROSS JOIN date_range c
+)
+
+SELECT
+    regexp_replace(regexp_replace(i.bucket, '^nyec-pdr-prod-', ''), '-part2$', '') AS qe,
+    trim(
+        CASE
+            WHEN lower(split_part(i.key, '/', 1)) IN ('processed', 'error', 'backload')
+            THEN split_part(i.key, '/', 2)
+            ELSE split_part(i.key, '/', 1)
+        END
+    ) AS assigning_authority,
+    date_format(p.target_day, '%Y-%m-%d') AS day,
+    CASE
+        WHEN day_of_week(p.target_day) IN (6, 7) THEN 'weekend'
+        ELSE 'Weekday'
+    END AS day_type,
+    CASE
+        WHEN lower(split_part(i.key, '/', 1)) = 'processed' THEN 'PROCESSED'
+        WHEN lower(split_part(i.key, '/', 1)) = 'error'     THEN 'ERROR'
+        WHEN regexp_like(lower(i.key), '(^|/)backload(/|$)') THEN 'BACKLOG'
+        ELSE 'NORMAL'
+    END AS path_type,
+    CASE
+        WHEN regexp_like(lower(i.key), '(^|/)ccd(/|$)') THEN 'CCD'
+        WHEN regexp_like(lower(i.key), '(^|/)trn(/|$)') THEN 'TRN'
+        WHEN regexp_like(lower(i.key), '(^|/)oru(/|$)') THEN 'ORU'
+    END AS data_type,
+    count(*) AS doc_count,
+    round(avg(i.size) / 1024.0, 1) AS avg_size_kb,
+    regexp_replace(regexp_replace(i.bucket, '^nyec-pdr-prod-', ''), '-part2$', '')
+        || '|'
+        || trim(
+            CASE
+                WHEN lower(split_part(i.key, '/', 1)) IN ('processed', 'error', 'backload')
+                THEN split_part(i.key, '/', 2)
+                ELSE split_part(i.key, '/', 1)
+            END
+        ) AS qeandAA
+FROM pdr_inventory.pdr_inventory_prod_data_all i
+JOIN params p
+    ON i.dt = p.dt_target_partition
+    AND i.last_modified_date >= p.day_start_ts
+    AND i.last_modified_date < p.day_end_ts
+WHERE
+    i.bucket LIKE 'nyec-pdr-prod-%'
+    AND i.is_latest = true
+    AND coalesce(i.is_delete_marker, false) = false
+    AND (
+        regexp_like(lower(i.key), '(^|/)ccd(/|$)')
+        OR regexp_like(lower(i.key), '(^|/)trn(/|$)')
+        OR regexp_like(lower(i.key), '(^|/)oru(/|$)')
+    )
+GROUP BY 1, 2, 3, 4, 5, 6, 9
+ORDER BY day ASC, qe ASC, assigning_authority ASC;

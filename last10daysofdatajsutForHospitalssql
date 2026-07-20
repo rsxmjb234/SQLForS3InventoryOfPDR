@@ -1,0 +1,117 @@
+/*
+Goal:
+- Pull hospital-only submission activity over a configurable date range.
+- Keep results day-granular (one row set per target day).
+- Use inventory_snapshot_offset_days to support delayed inventory partitions
+  (set to 2 for a two-day lookback).
+
+*/
+
+WITH config AS (
+    SELECT
+        DATE '2026-06-01' AS start_day,
+        date_add('day', -1, current_date) AS end_day,
+        2 AS inventory_snapshot_offset_days
+),
+days AS (
+    SELECT
+        d AS target_day
+    FROM config c
+    CROSS JOIN UNNEST(sequence(c.start_day, c.end_day, INTERVAL '1' DAY)) AS t(d)
+),
+params AS (
+    SELECT
+        d.target_day,
+        CAST(d.target_day AS timestamp) AS day_start_ts,
+        CAST(date_add('day', 1, d.target_day) AS timestamp) AS day_end_ts,
+        date_format(
+            date_add('day', c.inventory_snapshot_offset_days, d.target_day),
+            '%Y-%m-%d-01-00'
+        ) AS dt_target_partition
+    FROM days d
+    CROSS JOIN config c
+),
+
+typed AS (
+    SELECT
+        p.target_day AS day,
+        i.bucket,
+        regexp_replace(regexp_replace(i.bucket, '^nyec-pdr-prod-', ''), '-part2$', '') AS qe,
+
+        CASE
+            WHEN lower(i.key) LIKE 'backload/%' THEN split_part(i.key, '/', 2)
+            ELSE split_part(i.key, '/', 1)
+        END AS assigning_authority,
+
+        CASE
+            WHEN regexp_like(lower(i.key), '(^|/)backload/') THEN 'BACKLOAD'
+            ELSE 'NON_BACKLOAD'
+        END AS load_type,
+
+        CASE
+            WHEN regexp_like(lower(i.key), '(^|/)trn(/|$)') THEN 'TRN'
+            WHEN regexp_like(lower(i.key), '(^|/)ccd(/|$)') THEN 'CCD'
+            WHEN regexp_like(lower(i.key), '(^|/)oru(/|$)') THEN 'ORU'
+        END AS doc_type,
+
+        i.last_modified_date,
+        i.key
+    FROM pdr_inventory.pdr_inventory_prod_data_all i
+    JOIN params p
+        ON i.dt = p.dt_target_partition
+        AND i.last_modified_date >= p.day_start_ts
+        AND i.last_modified_date < p.day_end_ts
+    INNER JOIN pdr_inventory.hospital_aa_reference h
+        ON upper(
+            CASE
+                WHEN lower(i.key) LIKE 'backload/%' THEN split_part(i.key, '/', 2)
+                ELSE split_part(i.key, '/', 1)
+            END
+        ) = upper(h.assigning_authority)
+    WHERE
+        i.bucket LIKE 'nyec-pdr-prod-%'
+        AND i.is_latest = true
+        AND coalesce(i.is_delete_marker, false) = false
+        AND (
+            regexp_like(lower(i.key), '(^|/)trn(/|$)')
+            OR regexp_like(lower(i.key), '(^|/)ccd(/|$)')
+            OR regexp_like(lower(i.key), '(^|/)oru(/|$)')
+        )
+),
+
+grouped AS (
+    SELECT
+        day,
+        assigning_authority,
+        array_join(array_sort(array_distinct(array_agg(qe))), ', ') AS qe,
+        count(*) AS total_submissions,
+        count_if(doc_type = 'CCD') AS ccd_submissions,
+        count_if(doc_type = 'TRN') AS trn_submissions,
+        count_if(doc_type = 'ORU') AS oru_submissions,
+        count_if(load_type = 'BACKLOAD') AS backload_submissions,
+        count_if(load_type = 'NON_BACKLOAD') AS non_backload_submissions,
+        min(last_modified_date) AS first_submission_ts,
+        max(last_modified_date) AS last_submission_ts
+    FROM typed
+    WHERE doc_type IS NOT NULL
+    GROUP BY 1, 2
+)
+
+SELECT
+    day,
+    CASE
+        WHEN day_of_week(day) IN (6, 7) THEN 'weekend'
+        ELSE 'Weekday'
+    END AS Weekend,
+    assigning_authority,
+    qe,
+    total_submissions,
+    ccd_submissions,
+    trn_submissions,
+    oru_submissions,
+    backload_submissions,
+    non_backload_submissions,
+    first_submission_ts,
+    last_submission_ts
+FROM grouped
+ORDER BY day, assigning_authority;
