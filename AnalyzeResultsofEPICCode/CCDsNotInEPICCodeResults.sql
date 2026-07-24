@@ -77,35 +77,45 @@ pdr_ccd_sources AS (
     HAVING count(*) >= 20
 ),
 
--- Distinct QE|AA combinations already analyzed in ehr_software_analysis
--- QE is derived from the S3 path column (bucket name)
+-- Distinct AA combinations already analyzed in ehr_software_analysis
+-- Extract QE from bucket name in path, extract AA from path segments
 analyzed_sources AS (
     SELECT DISTINCT
         upper(trim(
             regexp_replace(
-                regexp_replace(
-                    regexp_extract(path, 'nyec-pdr-prod-([^/]+)', 1),
-                    '-part2$', ''
-                ),
-                '', ''
+                regexp_extract(path, 'nyec-pdr-prod-([^/]+)', 1),
+                '-part2$', ''
             )
         )) AS qe,
-        upper(trim(assigning_authority)) AS assigning_authority
+        -- Extract AA from path: after bucket, first segment (or second if processed/error/backload)
+        upper(trim(
+            CASE
+                WHEN lower(split_part(regexp_extract(path, 'nyec-pdr-prod-[^/]+/(.+)', 1), '/', 1))
+                     IN ('processed', 'error', 'backload')
+                THEN split_part(regexp_extract(path, 'nyec-pdr-prod-[^/]+/(.+)', 1), '/', 2)
+                ELSE split_part(regexp_extract(path, 'nyec-pdr-prod-[^/]+/(.+)', 1), '/', 1)
+            END
+        )) AS assigning_authority,
+        ehr_guess
     FROM pdr_inventory.ehr_software_analysis
-    WHERE assigning_authority IS NOT NULL
-      AND trim(assigning_authority) <> ''
+    WHERE path IS NOT NULL
+      AND path <> ''
 )
 
--- Sources in PDR that are NOT in the analysis
+-- Every source with analysis status
 SELECT
     p.qe,
     p.assigning_authority,
-    p.ccd_count
+    p.ccd_count,
+    CASE
+        WHEN a.assigning_authority IS NOT NULL THEN 'Yes'
+        ELSE 'No'
+    END AS in_ehr_analysis,
+    a.ehr_guess
 FROM pdr_ccd_sources p
 LEFT JOIN analyzed_sources a
-    ON upper(p.qe) = upper(a.qe)
-    AND upper(p.assigning_authority) = upper(a.assigning_authority)
-WHERE a.assigning_authority IS NULL
-  AND p.assigning_authority IS NOT NULL
+    ON upper(p.qe) = a.qe
+    AND upper(p.assigning_authority) = a.assigning_authority
+WHERE p.assigning_authority IS NOT NULL
   AND p.assigning_authority <> ''
 ORDER BY p.qe ASC, p.ccd_count DESC;
