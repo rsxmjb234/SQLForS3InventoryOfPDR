@@ -25,7 +25,7 @@ Where to put
 
 WITH config AS (
     SELECT
-        DATE '2026-05-01' AS start_day,                     -- << CHANGE THIS: first day you need
+        DATE '2026-07-15' AS start_day,                     -- << CHANGE THIS: first day you need
         date_add('day', -2, current_date) AS end_day,       -- today in UTC minus 2; inventory partition is reliable
         2  AS inventory_snapshot_offset_days
 ),
@@ -90,7 +90,8 @@ SELECT
                 THEN split_part(i.key, '/', 2)
                 ELSE split_part(i.key, '/', 1)
             END
-        ) AS qeandAA
+        ) AS qeandAA,
+    's3://' || max(i.bucket || '/' || i.key) AS sample_s3_path
 FROM pdr_inventory.pdr_inventory_prod_data_all i
 JOIN params p
     ON i.dt = p.dt_target_partition
