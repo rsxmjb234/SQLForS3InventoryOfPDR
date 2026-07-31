@@ -1,0 +1,128 @@
+/*
+Expected cost/run: ~$0.30 (60 GB scanned @ $5/TB for 5 days)
+Expected runtime: ~1 minute
+
+Goal:
+- Find assigning authorities whose CCD size profile is significantly different
+  from the overall PDR baseline.
+- Baseline (from 5-day sample of ~2.7M CCDs):
+    ~80% of CCDs are smaller than 0.5 MB
+    ~5% of CCDs are 1 MB or larger
+- Flag sources where:
+    - Much more than 20% of their CCDs are > 0.5 MB (unusually large docs)
+    - Much more than 5% of their CCDs are > 1 MB (very large docs)
+    - Much more than 50% of their CCDs are < 0.1 MB (unusually small — possible stubs)
+- These outliers may indicate:
+    - Invalid/empty documents (too small)
+    - Bloated or duplicated content (too large)
+    - A different EHR system with unusual output patterns
+
+How to use:
+- Run as-is. Results show sources that deviate significantly from baseline.
+- Adjust thresholds in the final WHERE clause as needed.
+- min_docs filters out low-volume sources that would produce noisy percentages.
+*/
+
+WITH config AS (
+    SELECT
+        5  AS lookback_days,                -- << CHANGE THIS
+        3  AS inventory_lag_days,
+        2  AS inventory_snapshot_offset_days,
+        50 AS min_docs                      -- << minimum CCDs to be included in analysis
+),
+date_range AS (
+    SELECT
+        date_add('day', -(c.lookback_days + c.inventory_lag_days - 1), current_date) AS start_day,
+        date_add('day', -c.inventory_lag_days, current_date) AS end_day,
+        c.inventory_snapshot_offset_days,
+        c.min_docs
+    FROM config c
+),
+days AS (
+    SELECT
+        d AS target_day
+    FROM date_range c
+    CROSS JOIN UNNEST(sequence(c.start_day, c.end_day, INTERVAL '1' DAY)) AS t(d)
+),
+params AS (
+    SELECT
+        d.target_day,
+        CAST(d.target_day AS timestamp) AS day_start_ts,
+        CAST(date_add('day', 1, d.target_day) AS timestamp) AS day_end_ts,
+        date_format(
+            date_add('day', c.inventory_snapshot_offset_days, d.target_day),
+            '%Y-%m-%d-01-00'
+        ) AS dt_target_partition
+    FROM days d
+    CROSS JOIN date_range c
+),
+
+-- Get size data per source
+source_sizes AS (
+    SELECT
+        regexp_replace(regexp_replace(i.bucket, '^nyec-pdr-prod-', ''), '-part2$', '') AS qe,
+        upper(trim(
+            CASE
+                WHEN lower(split_part(i.key, '/', 1)) IN ('processed', 'error', 'backload')
+                THEN split_part(i.key, '/', 2)
+                ELSE split_part(i.key, '/', 1)
+            END
+        )) AS assigning_authority,
+        i.size AS size_bytes
+    FROM pdr_inventory.pdr_inventory_prod_data_all i
+    JOIN params p
+        ON i.dt = p.dt_target_partition
+        AND i.last_modified_date >= p.day_start_ts
+        AND i.last_modified_date < p.day_end_ts
+    WHERE
+        i.bucket LIKE 'nyec-pdr-prod-%'
+        AND i.is_latest = true
+        AND coalesce(i.is_delete_marker, false) = false
+        AND NOT regexp_like(lower(i.key), '(^|/)backload(/|$)')
+        AND regexp_like(lower(i.key), '(^|/)ccd(/|$)')
+),
+
+-- Compute size profile per source
+source_profile AS (
+    SELECT
+        qe,
+        assigning_authority,
+        count(*) AS total_ccds,
+        round(avg(size_bytes) / 1024.0, 1) AS avg_size_kb,
+        round(100.0 * count_if(size_bytes < 100000) / count(*), 1) AS pct_under_100kb,
+        round(100.0 * count_if(size_bytes < 500000) / count(*), 1) AS pct_under_500kb,
+        round(100.0 * count_if(size_bytes >= 500000) / count(*), 1) AS pct_over_500kb,
+        round(100.0 * count_if(size_bytes >= 1000000) / count(*), 1) AS pct_over_1mb
+    FROM source_sizes
+    WHERE assigning_authority IS NOT NULL
+      AND assigning_authority <> ''
+    GROUP BY 1, 2
+)
+
+SELECT
+    qe,
+    assigning_authority,
+    total_ccds,
+    avg_size_kb,
+    pct_under_100kb,
+    pct_under_500kb,
+    pct_over_500kb,
+    pct_over_1mb,
+    CASE
+        WHEN pct_under_100kb > 50 THEN 'UNUSUALLY SMALL'
+        WHEN pct_over_1mb > 15 THEN 'UNUSUALLY LARGE'
+        WHEN pct_over_500kb > 40 THEN 'LARGER THAN TYPICAL'
+        ELSE 'REVIEW'
+    END AS finding
+FROM source_profile
+CROSS JOIN date_range c
+WHERE total_ccds >= c.min_docs
+  AND (
+    -- Flag: more than 50% of docs are under 100KB (baseline is ~13%)
+    pct_under_100kb > 50
+    -- Flag: more than 40% of docs are over 500KB (baseline is ~20%)
+    OR pct_over_500kb > 40
+    -- Flag: more than 15% of docs are over 1MB (baseline is ~5%)
+    OR pct_over_1mb > 15
+  )
+ORDER BY finding ASC, pct_over_1mb DESC, qe ASC, assigning_authority ASC;

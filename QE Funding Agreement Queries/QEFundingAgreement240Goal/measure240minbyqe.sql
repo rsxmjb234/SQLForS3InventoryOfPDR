@@ -27,7 +27,7 @@ Scan-minimization choices:
 
 WITH config AS (
 	SELECT
-		CAST(DATE '2017-06-01' AS date) AS start_date, -- # start date (example: 06/01/2017)
+		CAST(DATE '2017-07-01' AS date) AS start_date, -- # start date (example: 06/01/2017)
 		date_add('day', -2, date(current_timestamp AT TIME ZONE 'America/New_York')) AS end_date, -- # end date (last full inventory day)
 		2 AS inventory_snapshot_offset_days, -- # snapshot lag from event day to inventory dt partition
 		240 AS outage_threshold_minutes -- # outage threshold in minutes
