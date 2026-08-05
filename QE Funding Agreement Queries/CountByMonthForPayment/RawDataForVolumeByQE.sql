@@ -20,7 +20,7 @@ How to use:
 WITH config AS (
     SELECT
         DATE '2026-01-01' AS start_month,       -- << first day of first month
-        DATE '2026-06-01' AS end_month,         -- << first day of last month to include
+        DATE '2026-07-01' AS end_month,         -- << first day of last month to include
         2 AS inventory_snapshot_offset_days
 ),
 months AS (
