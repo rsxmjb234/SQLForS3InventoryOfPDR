@@ -15,7 +15,7 @@ Excel tip: Paste into Excel, insert a Pivot Table.
 
 WITH config AS (
     SELECT
-        DATE '2026-07-29' AS start_day,                     -- << CHANGE THIS: first day you need
+        DATE '2026-08-03' AS start_day,                     -- << CHANGE THIS: first day you need
         date_add('day', -1, current_date) AS end_day,       -- today in UTC minus 2; inventory partition is reliable
         2  AS inventory_snapshot_offset_days
 ),
