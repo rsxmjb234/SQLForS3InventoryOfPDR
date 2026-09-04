@@ -9,8 +9,8 @@ CREATE EXTERNAL TABLE pdr_inventory.lookup_verato_aa (
   qe string,
   assigning_authority string,
   smrn_count string,
-  fixed_code string,
-  qe_aa_together string
+  AAAsViewedByQE string,
+  QEAndAAAppended string
 )
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES (

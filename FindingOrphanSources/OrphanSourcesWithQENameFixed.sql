@@ -37,7 +37,7 @@ QE name mapping (PDR bucket name → Verato table name):
 
 WITH config AS (
     SELECT
-        10 AS lookback_days,                -- << CHANGE THIS
+        200 AS lookback_days,                -- << CHANGE THIS
         3  AS inventory_lag_days,
         2  AS inventory_snapshot_offset_days
 ),
@@ -95,7 +95,8 @@ pdr_sources AS (
         CASE
             WHEN regexp_like(lower(i.key), '(^|/)ccd(/|$)') THEN 'CCD'
             WHEN regexp_like(lower(i.key), '(^|/)trn(/|$)') THEN 'TRN'
-        END AS data_type
+        END AS data_type,
+        i.last_modified_date
     FROM pdr_inventory.pdr_inventory_prod_data_all i
     JOIN params p
         ON i.dt = p.dt_target_partition
@@ -118,7 +119,8 @@ pdr_summary AS (
         qe,
         assigning_authority,
         count_if(data_type = 'CCD') AS ccd_count,
-        count_if(data_type = 'TRN') AS trn_count
+        count_if(data_type = 'TRN') AS trn_count,
+        max(last_modified_date) AS most_recent_submission
     FROM pdr_sources
     WHERE assigning_authority IS NOT NULL
       AND assigning_authority <> ''
@@ -132,6 +134,7 @@ orphans AS (
         p.assigning_authority,
         p.ccd_count,
         p.trn_count,
+        p.most_recent_submission,
         m.verato_name
     FROM pdr_summary p
     LEFT JOIN qe_name_map m
@@ -151,6 +154,7 @@ SELECT
     assigning_authority AS assigning_authority_PDR,
     ccd_count,
     trn_count,
-    ccd_count + trn_count AS total_docs
+    ccd_count + trn_count AS total_docs,
+    date_format(most_recent_submission, '%Y-%m-%d %H:%i:%s') AS most_recent_submission
 FROM orphans
 ORDER BY qe ASC, ccd_count DESC;
