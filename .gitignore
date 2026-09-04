@@ -1,2 +1,6 @@
 *.txt
 *.csv
+
+# Allow CSVs in FindingOrphanSources to be tracked
+!FindingOrphanSources/
+!FindingOrphanSources/*.csv
