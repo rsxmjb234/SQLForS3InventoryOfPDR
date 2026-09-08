@@ -8,7 +8,6 @@ Make table for Verato AA lookup.
 CREATE EXTERNAL TABLE pdr_inventory.lookup_verato_aa (
   qe string,
   assigning_authority string,
-  smrn_count string,
   AAAsViewedByQE string,
   QEAndAAAppended string
 )
