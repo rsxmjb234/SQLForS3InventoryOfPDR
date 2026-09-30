@@ -62,6 +62,8 @@ WHERE
     i.bucket LIKE 'nyec-pdr-prod-%'
     AND i.is_latest = true
     AND coalesce(i.is_delete_marker, false) = false
+    -- PDR data contributed before 2026-03-11 was only the HEADER information, not the clinical document; exclude it.
+    AND i.last_modified_date >= timestamp '2026-03-11 00:00:00'
     -- Exclude backload
     AND NOT regexp_like(lower(i.key), '(^|/)backload/')
     -- Only known doc types

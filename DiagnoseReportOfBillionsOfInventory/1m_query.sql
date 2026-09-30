@@ -6,6 +6,8 @@ WITH split_paths AS (
     where key not like '%/'
         AND is_latest = true
         AND coalesce(is_delete_marker, false) = false
+        -- PDR data contributed before 2026-03-11 was only the HEADER information, not the clinical document; exclude it.
+        AND last_modified_date >= timestamp '2026-03-11 00:00:00'
         and bucket in (
             'nyec-pdr-prod-bronx',
             'nyec-pdr-prod-healtheconnections',

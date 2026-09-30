@@ -65,6 +65,27 @@ WITH config AS (
 ),
 ```
 
+## Data Start Date — March 11, 2026 (REQUIRED)
+
+Data before **March 11, 2026** is not valid for clinical analysis and must be
+excluded from EVERY query. Always filter on the submission timestamp:
+
+```sql
+-- PDR data contributed before 2026-03-11 contained only the HEADER information,
+-- NOT the clinical document. Exclude it from all analysis.
+AND i.last_modified_date >= timestamp '2026-03-11 00:00:00'
+```
+
+Why: prior to March 11, 2026, sources were submitting only the header/metadata
+portion of documents to the PDR — not the actual clinical content (the CCD/TRN
+body). Counting those pre-March-11 records would overstate real clinical volume,
+so they are excluded everywhere.
+
+This applies to all queries that read `pdr_inventory_prod_data_all`, whether
+they use a rolling window, a single snapshot, or an all-time count. Even when
+pinned to one snapshot partition, the snapshot still contains documents dated
+before March 11 that must be filtered out.
+
 ## Cost Estimation
 
 - Approximately 10 GB of data scanned per day of lookback
