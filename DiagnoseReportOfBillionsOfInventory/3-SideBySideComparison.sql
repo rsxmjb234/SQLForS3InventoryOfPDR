@@ -35,6 +35,8 @@ FROM pdr_inventory.pdr_inventory_prod_data_all
 WHERE bucket LIKE 'nyec-pdr-prod-%'
   AND is_latest = true
   AND coalesce(is_delete_marker, false) = false
+  -- PDR data contributed before 2026-03-11 was only the HEADER information, not the clinical document; exclude it.
+  AND last_modified_date >= timestamp '2026-03-11 00:00:00'
   AND dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d-01-00')
 
 UNION ALL
@@ -47,6 +49,8 @@ FROM pdr_inventory.pdr_inventory_prod_data_all
 WHERE bucket LIKE 'nyec-pdr-prod-%'
   AND is_latest = true
   AND coalesce(is_delete_marker, false) = false
+  -- PDR data contributed before 2026-03-11 was only the HEADER information, not the clinical document; exclude it.
+  AND last_modified_date >= timestamp '2026-03-11 00:00:00'
   AND dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d-01-00')
 
 ORDER BY row_count DESC;

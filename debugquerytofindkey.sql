@@ -28,6 +28,8 @@ WITH sample AS (
     WHERE dt = '2026-05-18-01-00'
       AND is_latest = true
       AND coalesce(is_delete_marker, false) = false
+      -- PDR data contributed before 2026-03-11 was only the HEADER information, not the clinical document; exclude it.
+      AND last_modified_date >= timestamp '2026-03-11 00:00:00'
       AND bucket LIKE 'nyec-pdr-prod-%'
 )
 SELECT
