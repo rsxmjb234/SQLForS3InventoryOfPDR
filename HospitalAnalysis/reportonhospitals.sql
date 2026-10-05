@@ -3,21 +3,24 @@ Expected cost/run: ~$0.59 (118 GB scanned @ $5/TB for 10 days)
 Expected runtime: ~1-2 minutes
 
 Goal:
-- Report ONLY on hospitals, for the last 10 days, counting CCDs and TRNs per hospital.
+- Report ONLY on hospitals, for the last 10 days, counting CCDs and TRNs per
+  assigning authority (code). QE is NOT considered — we work purely at the
+  assigning-authority level.
 - Includes ALL hospital AAs — even those with zero data (shown as 0).
 - Excludes backlog — only real-time submissions.
 - Skips most recent 3 days for inventory freshness.
 
 Hospital definition (from lookup_hospital_assigning_authorities):
-- record_type      = 'Assigning Authority'
+- record_type       = 'Assigning Authority'
 - organization_type = 'Article 28 - Hospital'
-- code             = the assigning authority used to match the S3 inventory path
-- qe_name          = the QE the hospital belongs to
+- code              = the assigning authority used to match the S3 inventory path
 
 Matching note:
 - The hospital 'code' is matched to the inventory-derived AA using an
   UPPER(TRIM()) normalized key. The inventory AA is extracted from the S3 key
   path (segment 1, or segment 2 when prefixed with processed/error).
+- Matching is on the AA code only, regardless of which QE bucket the data
+  landed in.
 */
 
 WITH config AS (
@@ -52,12 +55,11 @@ params AS (
     CROSS JOIN date_range c
 ),
 
--- Full deduplicated hospital list (master list — every hospital appears in output)
+-- Full deduplicated hospital AA list (master list — every AA appears in output)
 hospitals AS (
     SELECT
         upper(trim(code)) AS assigning_authority_key,
         min(trim(code)) AS assigning_authority,
-        min(trim(qe_name)) AS qe_name,
         min(trim(organization_name)) AS organization_name
     FROM pdr_inventory.lookup_hospital_assigning_authorities
     WHERE record_type = 'Assigning Authority'
@@ -67,7 +69,7 @@ hospitals AS (
     GROUP BY upper(trim(code))
 ),
 
--- Actual counts from inventory (real-time only, no backlog)
+-- Actual counts from inventory (real-time only, no backlog), keyed by AA only
 actual AS (
     SELECT
         upper(trim(
@@ -77,7 +79,6 @@ actual AS (
                 ELSE split_part(i.key, '/', 1)
             END
         )) AS assigning_authority_key,
-        arbitrary(regexp_replace(regexp_replace(i.bucket, '^nyec-pdr-prod-', ''), '-part2$', '')) AS qe_bucket,
         count_if(regexp_like(lower(i.key), '(^|/)ccd(/|$)')) AS ccd_count,
         count_if(regexp_like(lower(i.key), '(^|/)trn(/|$)')) AS trn_count
     FROM pdr_inventory.pdr_inventory_prod_data_all i
@@ -100,7 +101,6 @@ actual AS (
 )
 
 SELECT
-    h.qe_name AS qe,
     h.assigning_authority,
     h.organization_name,
     coalesce(a.ccd_count, 0) AS ccd_count,
@@ -109,4 +109,4 @@ SELECT
 FROM hospitals h
 LEFT JOIN actual a
     ON h.assigning_authority_key = a.assigning_authority_key
-ORDER BY qe, total_docs DESC, h.assigning_authority ASC;
+ORDER BY total_docs DESC, h.assigning_authority ASC;
