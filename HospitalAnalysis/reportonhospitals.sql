@@ -25,34 +25,21 @@ Matching note:
 
 WITH config AS (
     SELECT
-        10 AS lookback_days,                -- << 10-day window
-        3  AS inventory_lag_days,           -- start 3 days ago (inventory lag)
+        3  AS inventory_lag_days,           -- look at the single day 3 days ago
         2  AS inventory_snapshot_offset_days
 ),
-date_range AS (
-    SELECT
-        date_add('day', -(c.lookback_days + c.inventory_lag_days - 1), current_date) AS start_day,
-        date_add('day', -c.inventory_lag_days, current_date) AS end_day,
-        c.inventory_snapshot_offset_days
-    FROM config c
-),
-days AS (
-    SELECT
-        d AS target_day
-    FROM date_range c
-    CROSS JOIN UNNEST(sequence(c.start_day, c.end_day, INTERVAL '1' DAY)) AS t(d)
-),
+-- Single target day = 3 days ago (current state, not a rolling history)
 params AS (
     SELECT
-        d.target_day,
-        CAST(d.target_day AS timestamp) AS day_start_ts,
-        CAST(date_add('day', 1, d.target_day) AS timestamp) AS day_end_ts,
+        date_add('day', -c.inventory_lag_days, current_date) AS target_day,
+        CAST(date_add('day', -c.inventory_lag_days, current_date) AS timestamp) AS day_start_ts,
+        CAST(date_add('day', -(c.inventory_lag_days - 1), current_date) AS timestamp) AS day_end_ts,
         date_format(
-            date_add('day', c.inventory_snapshot_offset_days, d.target_day),
+            date_add('day', c.inventory_snapshot_offset_days,
+                     date_add('day', -c.inventory_lag_days, current_date)),
             '%Y-%m-%d-01-00'
         ) AS dt_target_partition
-    FROM days d
-    CROSS JOIN date_range c
+    FROM config c
 ),
 
 -- Full deduplicated hospital AA list (master list — every AA appears in output)

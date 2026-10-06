@@ -1,6 +1,6 @@
 /*
-Expected cost/run: ~$0.59 (118 GB scanned @ $5/TB for 10 days)
-Expected runtime: ~1 minute
+Expected cost/run: ~$0.06 (single inventory day, ~12 GB @ $5/TB)
+Expected runtime: ~30 seconds
 
 Goal:
 - Find "orphan" sources — assigning authorities that are actively submitting
@@ -11,11 +11,17 @@ Goal:
   unreachable for care coordination.
 - Identifying orphans helps prioritize onboarding them into the MPI.
 
+CURRENT STATE ONLY:
+- This looks at a SINGLE inventory day (3 days ago), not a rolling history.
+- We only care about data landing in PDR NOW that lacks an MPI entry.
+- Over time the team moves/fixes files, so a source that was orphaned weeks ago
+  may already be resolved. Looking at one recent day avoids flagging those.
+
 How it works:
-1. Pulls 10 days of real-time PDR inventory data (excludes backlog).
+1. Pulls ONE day of real-time PDR inventory data (3 days ago; excludes backlog).
 2. Maps QE bucket names to the naming convention used in lookup_verato_aa.
 3. LEFT JOINs against lookup_verato_aa — any source with no match is an orphan.
-4. Returns QE, assigning_authority, CCD count, TRN count for each orphan.
+4. Returns QE, assigning_authority, CCD count, TRN count for each current orphan.
 
 Rules:
 - Verato assigning_authority values may have suffixes like .DUPLICATE,
@@ -37,34 +43,21 @@ QE name mapping (PDR bucket name → Verato table name):
 
 WITH config AS (
     SELECT
-        200 AS lookback_days,                -- << CHANGE THIS
-        3  AS inventory_lag_days,
+        3  AS inventory_lag_days,            -- single day = 3 days ago (current state)
         2  AS inventory_snapshot_offset_days
 ),
-date_range AS (
-    SELECT
-        date_add('day', -(c.lookback_days + c.inventory_lag_days - 1), current_date) AS start_day,
-        date_add('day', -c.inventory_lag_days, current_date) AS end_day,
-        c.inventory_snapshot_offset_days
-    FROM config c
-),
-days AS (
-    SELECT
-        d AS target_day
-    FROM date_range c
-    CROSS JOIN UNNEST(sequence(c.start_day, c.end_day, INTERVAL '1' DAY)) AS t(d)
-),
+-- Single target day = 3 days ago (current state, not a rolling history)
 params AS (
     SELECT
-        d.target_day,
-        CAST(d.target_day AS timestamp) AS day_start_ts,
-        CAST(date_add('day', 1, d.target_day) AS timestamp) AS day_end_ts,
+        date_add('day', -c.inventory_lag_days, current_date) AS target_day,
+        CAST(date_add('day', -c.inventory_lag_days, current_date) AS timestamp) AS day_start_ts,
+        CAST(date_add('day', -(c.inventory_lag_days - 1), current_date) AS timestamp) AS day_end_ts,
         date_format(
-            date_add('day', c.inventory_snapshot_offset_days, d.target_day),
+            date_add('day', c.inventory_snapshot_offset_days,
+                     date_add('day', -c.inventory_lag_days, current_date)),
             '%Y-%m-%d-01-00'
         ) AS dt_target_partition
-    FROM days d
-    CROSS JOIN date_range c
+    FROM config c
 ),
 
 -- Map PDR bucket QE names to Verato QE names
