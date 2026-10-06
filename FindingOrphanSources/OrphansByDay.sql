@@ -13,9 +13,13 @@ Goal:
     2026-09-01  bronx     ccd_orphan_sources=2   trn_orphan_sources=0
     2026-09-01  healthix  ccd_orphan_sources=24  trn_orphan_sources=12
 
-Definitions:
-- ccd_orphan_sources = number of distinct orphan AAs that submitted >=1 CCD that day
-- trn_orphan_sources = number of distinct orphan AAs that submitted >=1 TRN that day
+Definitions (all are COUNTS OF DISTINCT SOURCES, not document counts):
+- ccd_orphan_sources   = orphan AAs that submitted >=1 CCD that day
+- trn_orphan_sources   = orphan AAs that submitted >=1 TRN that day
+- total_orphan_sources = distinct orphan AAs active that day (CCD and/or TRN)
+- total_ccd_sources    = ALL AAs (orphan or not) that submitted >=1 CCD that day
+- total_trn_sources    = ALL AAs (orphan or not) that submitted >=1 TRN that day
+- total_sources        = ALL distinct AAs active that day (CCD and/or TRN)
 
 Rules (same AA-normalization as OrphanSourcesWithQENameFixed.sql):
 - Verato AA suffixes .DUPLICATE / .DUPLICATE1 / .DUPLICATE2 / .DUPLICATE3 are
@@ -108,14 +112,15 @@ pdr_daily AS (
     GROUP BY 1, 2, 3
 ),
 
--- Keep only orphans (no matching Verato MPI entry)
-orphans AS (
+-- Flag each day+QE+AA with whether it is an orphan (no matching Verato MPI entry)
+flagged AS (
     SELECT
         d.day,
         d.qe,
         d.assigning_authority,
         d.has_ccd,
-        d.has_trn
+        d.has_trn,
+        CASE WHEN v.assigning_authority IS NULL THEN 1 ELSE 0 END AS is_orphan
     FROM pdr_daily d
     LEFT JOIN qe_name_map m
         ON lower(d.qe) = lower(m.pdr_name)
@@ -126,16 +131,21 @@ orphans AS (
             CASE WHEN upper(m.verato_name) = 'BRONX' THEN '_' ELSE '' END,
             CASE WHEN upper(m.verato_name) = 'BRONX' THEN ' ' ELSE '' END
         )) = upper(d.assigning_authority)
-    WHERE v.assigning_authority IS NULL
-      AND d.assigning_authority IS NOT NULL
+    WHERE d.assigning_authority IS NOT NULL
       AND d.assigning_authority <> ''
 )
 
 SELECT
     date_format(day, '%Y-%m-%d') AS day,
     qe,
-    count_if(has_ccd = 1) AS ccd_orphan_sources,
-    count_if(has_trn = 1) AS trn_orphan_sources
-FROM orphans
+    -- Orphan source counts (no MPI entry)
+    count_if(has_ccd = 1 AND is_orphan = 1) AS ccd_orphan_sources,
+    count_if(has_trn = 1 AND is_orphan = 1) AS trn_orphan_sources,
+    count_if(is_orphan = 1)                 AS total_orphan_sources,
+    -- Total source counts contributing to PDR that day (orphan or not)
+    count_if(has_ccd = 1) AS total_ccd_sources,
+    count_if(has_trn = 1) AS total_trn_sources,
+    count(*)              AS total_sources
+FROM flagged
 GROUP BY day, qe
 ORDER BY day ASC, qe ASC;
