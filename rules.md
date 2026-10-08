@@ -18,7 +18,7 @@ Example:
 
 ### Assigning Authority
 Assigning Authority is parsed from the S3 key path:
-- If key starts with backload/, use path segment 2
+- If the first path segment is one of `processed`, `error`, or `backload`, use path segment 2
 - Otherwise, use path segment 1
 
 ### Data Type (Required)
@@ -47,10 +47,25 @@ Important:
 A record is included only if all are true:
 - dt matches yesterday partition value (YYYY-MM-DD-01-00)
 - last_modified_date is within yesterday window [day_start, day_end)
+- last_modified_date >= 2026-03-11 00:00:00 (see Clinical Data Start Date below)
 - bucket matches nyec-pdr-prod-%
 - is_latest = true
 - is_delete_marker is false (or null treated as false)
 - key path indicates required data type (CCD, TRN, or ORU)
+
+## Clinical Data Start Date (REQUIRED — March 11, 2026)
+Documents contributed to the PDR before **2026-03-11** must NOT be counted in any
+analysis. Prior to that date, sources were submitting only the HEADER / metadata
+portion of documents, not the actual clinical document (the CCD/TRN body).
+Including those records overstates real clinical volume.
+
+Apply this filter on the submission event time in EVERY query that reads the
+inventory, in addition to any dt/partition or window filters:
+
+```sql
+-- PDR data contributed before 2026-03-11 was only the HEADER information, not the clinical document; exclude it.
+AND last_modified_date >= timestamp '2026-03-11 00:00:00'
+```
 
 ## Outage Detection Rules (240-Minute Rule)
 Outages are measured per:
