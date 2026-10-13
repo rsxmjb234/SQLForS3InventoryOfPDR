@@ -29,6 +29,18 @@ Required data types for outage compliance are:
 
 A record is considered one of these data types when the key path contains that token as a path segment.
 
+### Data Type — Labs
+Lab results are identified by the **`lab`** path segment in the S3 key, e.g.:
+`BXLEB/lab/2026/Oct/09/20/bronx_BXLEB_....hl7`
+
+Match labs with:
+```sql
+regexp_like(lower(key), '(^|/)lab(/|$)')
+```
+Labs are a distinct document type from CCD and TRN. When counting "labs" in
+reporting (e.g., the PDR fact sheet), use the `lab` token — NOT `oru`. Earlier
+queries guessed labs were under an `oru` segment; the actual segment is `lab`.
+
 ### Time
 - Reporting day is yesterday (a full completed day).
 - Day start is yesterday at 00:00:00.

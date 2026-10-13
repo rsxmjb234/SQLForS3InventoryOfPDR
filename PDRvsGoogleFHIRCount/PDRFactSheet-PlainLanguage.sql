@@ -5,7 +5,7 @@ Expected runtime: ~1-2 minutes
 Goal:
 - Produce copy-paste-ready, plain-English facts about the PDR:
     1. Total documents in the PDR as of the most recent complete snapshot
-       (CCD, TRN, labs/ORU) — excluding orphan sources and anything before
+       (CCD, TRN, labs via the /lab/ path segment) — excluding orphan sources and anything before
        2026-03-11.
     2. Typical daily intake (CCD, TRN, labs) = (today's total - 10-days-ago
        total) / 10.
@@ -94,7 +94,7 @@ docs AS (
         CASE
             WHEN regexp_like(lower(i.key), '(^|/)ccd(/|$)') THEN 'CCD'
             WHEN regexp_like(lower(i.key), '(^|/)trn(/|$)') THEN 'TRN'
-            WHEN regexp_like(lower(i.key), '(^|/)oru(/|$)') THEN 'ORU'
+            WHEN regexp_like(lower(i.key), '(^|/)lab(/|$)') THEN 'LAB'
         END AS data_type
     FROM pdr_inventory.pdr_inventory_prod_data_all i
     CROSS JOIN parts p
@@ -108,7 +108,7 @@ docs AS (
         AND (
             regexp_like(lower(i.key), '(^|/)ccd(/|$)')
             OR regexp_like(lower(i.key), '(^|/)trn(/|$)')
-            OR regexp_like(lower(i.key), '(^|/)oru(/|$)')
+            OR regexp_like(lower(i.key), '(^|/)lab(/|$)')
         )
 ),
 
@@ -126,29 +126,92 @@ counts AS (
     SELECT
         count_if(which_snap = 'recent' AND data_type = 'CCD') AS recent_ccd,
         count_if(which_snap = 'recent' AND data_type = 'TRN') AS recent_trn,
-        count_if(which_snap = 'recent' AND data_type = 'ORU') AS recent_oru,
+        count_if(which_snap = 'recent' AND data_type = 'LAB') AS recent_lab,
         count_if(which_snap = 'older'  AND data_type = 'CCD') AS older_ccd,
         count_if(which_snap = 'older'  AND data_type = 'TRN') AS older_trn,
-        count_if(which_snap = 'older'  AND data_type = 'ORU') AS older_oru
+        count_if(which_snap = 'older'  AND data_type = 'LAB') AS older_lab
     FROM kept
+),
+
+derived AS (
+    SELECT
+        recent_ccd, recent_trn, recent_lab,
+        recent_ccd + recent_trn + recent_lab AS recent_total,
+        CAST(round((recent_ccd - older_ccd) / CAST((SELECT avg_window_days FROM anchors) AS double)) AS bigint) AS ccd_per_day,
+        CAST(round((recent_trn - older_trn) / CAST((SELECT avg_window_days FROM anchors) AS double)) AS bigint) AS trn_per_day,
+        CAST(round((recent_lab - older_lab) / CAST((SELECT avg_window_days FROM anchors) AS double)) AS bigint) AS lab_per_day,
+        (SELECT date_format(recent_day, '%m-%d-%Y') FROM anchors) AS as_of
+    FROM counts
+),
+
+-- Format each number to a rounded short unit: >=1B -> "1.2B", >=1M -> "219M",
+-- >=1K -> "450K", else the raw number. Done inline (Athena has no UDFs).
+pretty AS (
+    SELECT
+        as_of,
+        -- total
+        CASE
+            WHEN recent_total >= 1000000000 THEN format('%.1fB', recent_total / 1e9)
+            WHEN recent_total >= 1000000    THEN format('%.0fM', recent_total / 1e6)
+            WHEN recent_total >= 1000        THEN format('%.0fK', recent_total / 1e3)
+            ELSE format('%,d', recent_total)
+        END AS total_s,
+        CASE
+            WHEN recent_ccd >= 1000000000 THEN format('%.1fB', recent_ccd / 1e9)
+            WHEN recent_ccd >= 1000000    THEN format('%.0fM', recent_ccd / 1e6)
+            WHEN recent_ccd >= 1000        THEN format('%.0fK', recent_ccd / 1e3)
+            ELSE format('%,d', recent_ccd)
+        END AS ccd_s,
+        CASE
+            WHEN recent_trn >= 1000000000 THEN format('%.1fB', recent_trn / 1e9)
+            WHEN recent_trn >= 1000000    THEN format('%.0fM', recent_trn / 1e6)
+            WHEN recent_trn >= 1000        THEN format('%.0fK', recent_trn / 1e3)
+            ELSE format('%,d', recent_trn)
+        END AS trn_s,
+        CASE
+            WHEN recent_lab >= 1000000000 THEN format('%.1fB', recent_lab / 1e9)
+            WHEN recent_lab >= 1000000    THEN format('%.0fM', recent_lab / 1e6)
+            WHEN recent_lab >= 1000        THEN format('%.0fK', recent_lab / 1e3)
+            ELSE format('%,d', recent_lab)
+        END AS lab_s,
+        -- per-day
+        CASE
+            WHEN ccd_per_day >= 1000000 THEN format('%.1fM', ccd_per_day / 1e6)
+            WHEN ccd_per_day >= 1000    THEN format('%.0fK', ccd_per_day / 1e3)
+            ELSE format('%,d', ccd_per_day)
+        END AS ccd_day_s,
+        CASE
+            WHEN trn_per_day >= 1000000 THEN format('%.1fM', trn_per_day / 1e6)
+            WHEN trn_per_day >= 1000    THEN format('%.0fK', trn_per_day / 1e3)
+            ELSE format('%,d', trn_per_day)
+        END AS trn_day_s,
+        CASE
+            WHEN lab_per_day >= 1000000 THEN format('%.1fM', lab_per_day / 1e6)
+            WHEN lab_per_day >= 1000    THEN format('%.0fK', lab_per_day / 1e3)
+            ELSE format('%,d', lab_per_day)
+        END AS lab_day_s
+    FROM derived
 )
 
 SELECT
-    'As of ' || (SELECT date_format(recent_day, '%m-%d-%Y') FROM anchors)
-      || ' the PDR contained '
-      || format('%,d', recent_ccd + recent_trn + recent_oru) || ' documents made up of '
-      || format('%,d', recent_ccd) || ' CCDs, '
-      || format('%,d', recent_trn) || ' TRNs and '
-      || format('%,d', recent_oru) || ' labs, submitted after 2026-03-11 and excluding invalid (non-MPI) sources.'
-    AS fact_total
-FROM counts
+    'As of ' || as_of || ' the PDR contained ' || chr(10)
+      || total_s || ' documents made up of ' || chr(10)
+      || ccd_s || ' CCDs' || chr(10)
+      || trn_s || ' TRNs' || chr(10)
+      || lab_s || ' labs' || chr(10)
+      || 'Exclusions:' || chr(10)
+      || 'Submitted after 2026-03-11 and excluding invalid (non-MPI) sources.'
+    AS fact
+FROM pretty
 
 UNION ALL
 
 SELECT
-    'On a typical day the PDR receives about '
-      || format('%,d', CAST(round((recent_ccd - older_ccd) / CAST((SELECT avg_window_days FROM anchors) AS double)) AS bigint)) || ' CCDs, '
-      || format('%,d', CAST(round((recent_trn - older_trn) / CAST((SELECT avg_window_days FROM anchors) AS double)) AS bigint)) || ' TRNs and '
-      || format('%,d', CAST(round((recent_oru - older_oru) / CAST((SELECT avg_window_days FROM anchors) AS double)) AS bigint)) || ' labs.'
-    AS fact_total
-FROM counts;
+    'On a typical day the PDR receives' || chr(10)
+      || ccd_day_s || ' CCDs' || chr(10)
+      || trn_day_s || ' TRNs' || chr(10)
+      || lab_day_s || ' labs' || chr(10)
+      || 'Exclusions:' || chr(10)
+      || 'Submitted after 2026-03-11 and excluding invalid (non-MPI) sources.'
+    AS fact
+FROM pretty;
