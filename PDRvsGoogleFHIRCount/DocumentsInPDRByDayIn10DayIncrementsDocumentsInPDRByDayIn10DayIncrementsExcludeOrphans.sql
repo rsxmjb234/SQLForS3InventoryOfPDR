@@ -3,7 +3,7 @@ Expected cost/run: ~$2-3 (samples ~10 inventory days — every 10th day over 100
 Expected runtime: ~2-3 minutes
 
 Goal:
-- Count the CUMULATIVE TOTAL of PDR documents (CCD and TRN) by QE, as of each
+- Count the  TOTAL of PDR documents (CCD and TRN) by QE, as of each
   inventory snapshot, sampling every 10 days over the last 100 days.
 - This is the TOTAL documents in the system on that snapshot date (full
   snapshot population), NOT documents added that day. The number should trend
