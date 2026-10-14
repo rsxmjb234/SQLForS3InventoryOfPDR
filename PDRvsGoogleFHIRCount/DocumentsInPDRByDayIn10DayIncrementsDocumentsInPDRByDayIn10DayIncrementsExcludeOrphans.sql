@@ -98,7 +98,7 @@ verato_norm AS (
         ON upper(v.qe) = upper(m.verato_name)
 ),
 
--- PDR documents per day + QE + AA + type (real-time only, no backlog)
+-- PDR documents per day + QE + AA + type (includes backload)
 pdr_docs AS (
     SELECT
         p.target_day AS day,
@@ -123,7 +123,6 @@ pdr_docs AS (
         AND coalesce(i.is_delete_marker, false) = false
         -- PDR data contributed before 2026-03-11 was only the HEADER information, not the clinical document; exclude it.
         AND i.last_modified_date >= timestamp '2026-03-12 00:00:00'
-        AND NOT regexp_like(lower(i.key), '(^|/)backload(/|$)')
         AND (
             regexp_like(lower(i.key), '(^|/)ccd(/|$)')
             OR regexp_like(lower(i.key), '(^|/)trn(/|$)')
