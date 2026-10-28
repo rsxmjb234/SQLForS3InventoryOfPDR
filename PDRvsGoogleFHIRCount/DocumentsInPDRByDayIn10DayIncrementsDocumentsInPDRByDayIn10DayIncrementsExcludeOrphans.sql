@@ -17,6 +17,7 @@ Goal:
     FindingOrphanSources\2026-09-04-REPORT on All sources contributing to PDR not in Verato.csv
   They are excluded because they would be double-counted against the Google
   FHIR count.
+  -Hi
 
 Approach (equivalent to excluding that orphan list, but self-maintaining):
 - Instead of hardcoding ~600 orphan AAs, we INNER JOIN each PDR source to the
