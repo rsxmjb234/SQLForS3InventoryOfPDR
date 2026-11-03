@@ -10,6 +10,13 @@ Why this query exists:
     3. Identify exactly which days drove a shortfall.
 - Excludes backload data (only real-time/normal submissions count toward the goal).
 
+Dating:
+- Buckets by the TRUE submission date parsed from the key path
+  (.../<type>/YYYY/Mon/DD/), NOT last_modified_date. last_modified gets
+  re-stamped by metadata changes / bulk rewrites, which falsely moves docs to
+  later dates; the key path preserves the real submission date. Because of this,
+  NO anomaly-day / bulk-spike-day exclusion is needed.
+
 How to use:
 - Set start_month and end_month in config.
 - Export results to CSV, open in Excel.
@@ -41,36 +48,53 @@ month_days AS (
     FROM months m
     CROSS JOIN config c
     CROSS JOIN UNNEST(sequence(m.month_start, date_add('day', -1, m.month_end), INTERVAL '1' DAY)) AS t(d)
+),
+
+-- One row per doc, with the TRUE submission date parsed from the key path.
+docs AS (
+    SELECT
+        i.dt,
+        regexp_replace(regexp_replace(i.bucket, '^nyec-pdr-prod-', ''), '-part2$', '') AS qe,
+        CASE
+            WHEN regexp_like(lower(i.key), '(^|/)ccd(/|$)') THEN 'CCD'
+            WHEN regexp_like(lower(i.key), '(^|/)trn(/|$)') THEN 'TRN'
+            WHEN regexp_like(lower(i.key), '(^|/)oru(/|$)') THEN 'ORU'
+        END AS data_type,
+        -- True submission date parsed from the key path: <type>/YYYY/Mon/DD/
+        TRY(date_parse(
+            regexp_extract(i.key, '(?i)(?:ccd|trn|lab|oru)/(\d{4}/[A-Za-z]{3}/\d{2})/', 1),
+            '%Y/%b/%d'
+        )) AS submission_date
+    FROM pdr_inventory.pdr_inventory_prod_data_all i
+    WHERE
+        i.bucket LIKE 'nyec-pdr-prod-%'
+        AND i.is_latest = true
+        AND coalesce(i.is_delete_marker, false) = false
+        -- Scan reducer only (re-stamps move dates forward; see rules.md).
+        AND i.last_modified_date >= timestamp '2026-03-11 00:00:00'
+        -- Exclude backload
+        AND NOT regexp_like(lower(i.key), '(^|/)backload/')
+        -- Only known doc types
+        AND (
+            regexp_like(lower(i.key), '(^|/)ccd(/|$)')
+            OR regexp_like(lower(i.key), '(^|/)trn(/|$)')
+            OR regexp_like(lower(i.key), '(^|/)oru(/|$)')
+        )
 )
 
 SELECT
     date_format(md.month_start, '%Y-%m') AS month,
     date_format(md.target_day, '%Y-%m-%d') AS day,
-    regexp_replace(regexp_replace(i.bucket, '^nyec-pdr-prod-', ''), '-part2$', '') AS qe,
-    CASE
-        WHEN regexp_like(lower(i.key), '(^|/)ccd(/|$)') THEN 'CCD'
-        WHEN regexp_like(lower(i.key), '(^|/)trn(/|$)') THEN 'TRN'
-        WHEN regexp_like(lower(i.key), '(^|/)oru(/|$)') THEN 'ORU'
-    END AS data_type,
+    docs.qe,
+    docs.data_type,
     count(*) AS doc_count
-FROM pdr_inventory.pdr_inventory_prod_data_all i
+FROM docs
 JOIN month_days md
-    ON i.dt = md.dt_target_partition
-    AND i.last_modified_date >= CAST(md.target_day AS timestamp)
-    AND i.last_modified_date < CAST(date_add('day', 1, md.target_day) AS timestamp)
-WHERE
-    i.bucket LIKE 'nyec-pdr-prod-%'
-    AND i.is_latest = true
-    AND coalesce(i.is_delete_marker, false) = false
+    ON docs.dt = md.dt_target_partition
+    AND docs.submission_date IS NOT NULL
     -- PDR data contributed before 2026-03-11 was only the HEADER information, not the clinical document; exclude it.
-    AND i.last_modified_date >= timestamp '2026-03-11 00:00:00'
-    -- Exclude backload
-    AND NOT regexp_like(lower(i.key), '(^|/)backload/')
-    -- Only known doc types
-    AND (
-        regexp_like(lower(i.key), '(^|/)ccd(/|$)')
-        OR regexp_like(lower(i.key), '(^|/)trn(/|$)')
-        OR regexp_like(lower(i.key), '(^|/)oru(/|$)')
-    )
+    AND docs.submission_date >= DATE '2026-03-11'
+    AND docs.submission_date >= CAST(md.target_day AS timestamp)
+    AND docs.submission_date < CAST(date_add('day', 1, md.target_day) AS timestamp)
 GROUP BY 1, 2, 3, 4
 ORDER BY qe ASC, data_type ASC, day ASC;

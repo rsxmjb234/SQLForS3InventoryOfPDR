@@ -1,0 +1,3 @@
+results go here when they are ready.
+
+https://nyehealth.sharepoint.com/sites/ContractingTeam/Shared%20Documents/Forms/AllItems.aspx?id=%2Fsites%2FContractingTeam%2FShared%20Documents%2FGeneral%2FContract%20Year%209%2026%2D27%2FQE%20Performance%20Reports%2FFoundation%20Services%20Eligibility%20Metrics%2FPDR%20Reports%2FOctober%202026&p=true&share=cgqrylliO9FTQLfjsEx3KH7DEgUDGydNdtuia%5FN41mJobh1Ecg&clickparams=eyAiWC1BcHBOYW1lIiA6ICJNaWNyb3NvZnQgT3V0bG9vayIsICJYLUFwcFZlcnNpb24iIDogIjE2LjAuMjA1MjcuMjAxMTIiLCAiT1MiIDogIldpbmRvd3MiIH0%3D&CID=5b3f4ba2%2Db0c7%2D0000%2D53ed%2D88bf65d3522f&cidOR=SPO
