@@ -1,4 +1,4 @@
-# [INVESTIGATE] Why did CCD volume drop in October 2026 across all QEs?
+# [INVESTIGATE] One-time CCD/TRN volume step-down at the Aug->Sep 2026 boundary
 
 **Type:** Investigation
 **Priority:** High
@@ -10,120 +10,126 @@
 
 ## Ask
 
-Determine the ROOT CAUSE of a broad CCD submission-volume decline that begins in
-September 2026 and persists in October. We have confirmed the drop is real and
-ruled out several explanations (below). We need to know WHY it is happening so we
-can state whether it is "attributable to expected changes" under the funding
-agreement or is a genuine compliance problem.
+Determine the ROOT CAUSE of a broad, one-time CCD (and TRN) volume **step-down**
+that occurred at the **August -> September 2026 boundary** and then held flat.
+This is NOT an "October got worse" problem - October is essentially equal to
+September. The question is: what changed around 2026-08-31 / 2026-09-01 that moved
+the whole platform to a new, lower steady-state?
 
-## The finding (confirmed)
+## Key reframing (this corrects the earlier "October drop" framing)
 
-CCD volume in October is 10-44% below the clean July/August baseline, for every
-QE. September is excluded from the baseline due to a known PDR bulk re-stamp
-anomaly (see "Ruled out" #2).
-
-October CCD vs July/August average (Verato-matched, backload excluded, dated by
-submission date from the key path):
-
-| QE | Oct CCD | Jul/Aug avg | Oct % of baseline |
-|----|---------|-------------|-------------------|
-| bronx | 792,759 | 1,409,089 | 56% |
-| techbd | 1,109,429 | 1,602,099 | 69% |
-| healtheconnections | 4,433,441 | 6,159,225 | 72% |
-| rochester | 1,400,730 | 1,789,628 | 78% |
-| hixny | 3,267,044 | 3,822,704 | 85% |
-| healthix | 7,644,669 | 8,501,208 | 90% |
-
-System-wide monthly CCD (per-day normalized):
+System-wide CCD volume by submission month (Verato-matched, backload excluded,
+dated by key-path submission date):
 
 | Month | CCD | CCD/day |
 |-------|-----|---------|
 | Jun | 21,213,509 | 707,117 |
 | Jul | 21,751,559 | 701,663 |
 | Aug | 24,816,349 | 800,527 |
-| Sep | 18,712,741 | 623,758 |
-| Oct | 18,648,072 | 601,551 |
+| **Sep** | **18,712,741** | **623,758** |
+| **Oct** | **18,648,072** | **601,551** |
 
-TRN shows an even larger drop over the same period (~15-18M/mo Jun-Aug down to
-~10M/mo Sep-Oct), so whatever this is likely affects more than CCD.
+- The drop is a **single step down between August and September** (~22% on CCD/day).
+- **September and October are nearly identical** (18.71M vs 18.65M; 624K vs 602K
+  per day). October did not decline further - it held at the new September level.
+- So the event to investigate is the Aug->Sep transition, not anything in October.
+- TRN shows the same step-down, larger (~15-18M/mo Jun-Aug down to ~10M/mo
+  Sep-Oct), so this is not CCD-specific.
+
+## Funding-agreement SLA under different baselines (CCD, 10%-below rule)
+
+**Oct vs September baseline (consecutive month):** only ONE QE fails.
+
+| QE | Sep (baseline) | Oct | Oct % of Sep | SLA |
+|----|----------------|-----|--------------|-----|
+| bronx | 637,475 | 792,759 | 124% | PASS |
+| healtheconnections | 4,289,513 | 4,433,441 | 103% | PASS |
+| healthix | 6,638,766 | 7,644,669 | 115% | PASS |
+| hixny | 4,905,283 | 3,267,044 | 67% | **FAIL** |
+| rochester | 1,260,838 | 1,400,730 | 111% | PASS |
+| techbd | 980,866 | 1,109,429 | 113% | PASS |
+
+- 5 of 6 QEs are stable-to-UP from September to October (103-124%).
+- The only failure, **hixny (67%)**, is a baseline artifact: hixny's September was
+  anomalously HIGH (Sep 4.9M vs its ~3.8M Jun-Aug norm), so October (3.27M, near its
+  historical level) only looks low relative to that inflated September. Against a
+  Jul/Aug baseline hixny Oct is ~85%. So hixny is not a genuine October shortfall.
+
+**Oct vs July/August baseline (pre-step-down):** ALL six QEs fail (56-90% of
+baseline), because that baseline predates the Aug->Sep step-down. This is the
+"true decline" view and is why the step-down matters.
+
+Takeaway: the SLA result depends entirely on whether the baseline is before or
+after the Aug->Sep step-down. That is exactly why we need the root cause - to know
+whether the step-down is "attributable to expected changes" under the agreement.
 
 ## Theories ALREADY EXPLORED - do not re-test these
 
-1. **Incomplete / too-early-in-November month.** RULED OUT. We pulled the
-   system-wide daily totals by submission date through Oct 31; October is a full,
-   complete month in the snapshot with no tail-off in the final days. Waiting does
-   not change it.
+1. **Incomplete / too-early-in-November month.** RULED OUT. System-wide daily
+   totals by submission date run through Oct 31; October is complete with no
+   tail-off in the final days. Also moot now - the event is Aug->Sep, not October.
 
-2. **September bulk re-stamp inflating the baseline.** IDENTIFIED and handled.
-   `last_modified_date` was re-stamped en masse on 2026-09-14, -15, and -22
-   (millions of OLD docs moved to those days), which is why we now date by the KEY
-   PATH submission date, not `last_modified_date`, and why September is excluded
-   from the baseline. This is a measurement fix, not the cause of the October drop
-   (the drop persists on true submission dates).
+2. **last_modified re-stamp (2026-09-14/-15/-22 bulk events).** IDENTIFIED and
+   handled. `last_modified_date` was mass re-stamped on those days (millions of
+   OLD docs). We therefore date by the KEY-PATH submission date, not
+   `last_modified_date`. The step-down persists on true submission dates, so the
+   re-stamp is a measurement issue, not the cause of the step-down.
 
-3. **Backload counted as real-time.** RULED OUT. All queries exclude
-   `backload/`. Backload is also essentially done, so it is not masking volume.
+3. **Backload counted as real-time.** RULED OUT. All queries exclude `backload/`;
+   backload is essentially complete.
 
-4. **Orphan / non-participant sources skewing counts.** RULED OUT. All volume
-   queries INNER JOIN to the Verato MPI (`lookup_verato_aa`) with standard AA
-   normalization; only matched sources are counted. Excluding orphans barely moved
-   the numbers, so the drop is in legitimate, matched sources.
+4. **Orphan / non-participant sources.** RULED OUT. All volume queries INNER JOIN
+   to the Verato MPI (`lookup_verato_aa`) with standard AA normalization; excluding
+   orphans barely moved the numbers.
 
-5. **Header-only early data.** RULED OUT. All queries exclude anything before
-   2026-03-11 (the header-only period).
+5. **Header-only early data.** RULED OUT. All queries exclude pre-2026-03-11.
 
 6. **Duplicate objects inflating earlier months.** INVESTIGATED and DISPROVEN.
-   We suspected CCDs were stored 3-4x (a 64-hex key segment looked like a content
-   hash). It is NOT a content hash: objects sharing that value have 9,092 distinct
-   file sizes (46 B to 3.6 MB), so they are different documents. Full S3 keys are
-   essentially unique (157,758,494 objects vs 157,758,465 distinct keys). There
-   are no stub/empty CCDs (0 under 1 KB). `e_tag` (true MD5) is empty in the
-   inventory, so we have no content fingerprint. CONCLUSION: no evidence of
-   duplication; this is not the cause.
+   The 64-hex key segment is NOT a content hash (objects sharing it have 9,092
+   distinct sizes, 46 B - 3.6 MB). Full keys are essentially unique (157,758,494
+   objects vs 157,758,465 distinct keys). No stub CCDs (0 under 1 KB). `e_tag`
+   (true MD5) is empty in the inventory. No evidence of duplication.
 
-7. **Fewer weekdays in October (calendar effect).** RULED OUT. Healthcare volume
-   is weekday-driven, so we normalized to CCDs-per-weekday (Mon-Fri only). The
-   decline persists nearly unchanged (e.g. bronx 58%, healtheconnections 72%,
-   techbd 68% of the Jul/Aug per-weekday baseline). Weekday counts were nearly
-   equal anyway (Jul 23, Aug 21, Oct 22).
+7. **Fewer weekdays in October (calendar effect).** RULED OUT. Normalized to
+   CCDs-per-weekday (Mon-Fri); the Aug->Sep step-down persists nearly unchanged.
+   Weekday counts were nearly equal (Jul 23, Aug 21, Oct 22).
 
 ## Theories NOT yet explored (candidate next steps)
 
-- **Source/feed change at the Aug->Sep boundary.** The drop is broad (all QEs,
-  CCD + TRN, same month), which points to something systemic on the PDR side
-  (ingestion, routing, connector change, dedupe/filter added, retention or
-  lifecycle change) rather than many sources independently dropping. Correlate
-  against PDR deploy/change logs around 2026-08-31 / 2026-09-01.
-- **Key-path date semantics.** We now date by the key path `<type>/YYYY/Mon/DD/`.
-  Confirm this path date is the SUBMISSION date and that the path convention did
-  not change around September (which could make recent months look lighter). Note
-  hixny CCD actually ROSE (+28% Sep vs Aug), which argues against a uniform
-  dating artifact, but it is worth confirming.
-- **Per-source drill-down.** For the worst QEs (bronx, techbd), identify which
-  assigning authorities drove the drop (did specific large sources fall off?).
-  Methodology already exists - see the drill-down / by-day queries referenced
-  below.
-- **Is the drop in NEW documents or in how many copies/representations are
-  written?** Tie-in to the e_tag gap: if we can populate a real content
-  fingerprint, confirm whether "volume" semantics changed.
+- **PDR-side change on/around 2026-08-31 / 2026-09-01.** The step-down is broad
+  (all QEs, CCD + TRN, same boundary) and one-time, which strongly suggests a
+  systemic change: an ingestion/connector/routing change, a new filter or dedupe,
+  a retention/lifecycle change, or a path/convention change. Correlate against PDR
+  deploy/change logs and infra changes at that boundary.
+- **Key-path date/convention change in September.** We date by the key path
+  `<type>/YYYY/Mon/DD/`. Confirm the path convention did not change at the Aug->Sep
+  boundary in a way that reassigns or drops documents. Counter-evidence: hixny CCD
+  actually ROSE in September, which argues against a uniform mechanical artifact.
+- **Per-source drill-down at the boundary.** For the biggest contributors, use the
+  Aug-vs-Sep drill-down to see whether the step-down is concentrated in specific
+  assigning authorities or uniform across them (uniform => PDR-side; concentrated
+  => source/feed side).
+- **e_tag / content fingerprint gap.** `e_tag` is empty; if it can be populated,
+  confirm whether "volume" semantics (new documents vs representations written)
+  changed at the boundary.
 
-## Queries run (GitHub) - all in the shared repo
+## Queries run (GitHub) - shared repo
 
 Repo root: https://github.com/rsxmjb234/SQLForS3InventoryOfPDR
 
 - Monthly volume SLA (query of record): [Monthly-VolumneByQEByDataType.sql](https://github.com/rsxmjb234/SQLForS3InventoryOfPDR/blob/main/QE%20Funding%20Agreement%20Queries/CountByMonthForPayment/Monthly-VolumneByQEByDataType.sql)
-- Per-QE CCD/TRN decline by submission month: [VolumeDecline-PerQE-CCD-TRN-BySubmissionMonth.sql](https://github.com/rsxmjb234/SQLForS3InventoryOfPDR/blob/main/QE%20Funding%20Agreement%20Queries/CountByMonthForPayment/Troubleshooting%20SQL/VolumeDecline-PerQE-CCD-TRN-BySubmissionMonth.sql)
-- System-wide daily totals / spike-day finder (detects re-stamp artifacts; uses last_modified intentionally): [SystemWide-DailyTotals-FindSpikeDays.sql](https://github.com/rsxmjb234/SQLForS3InventoryOfPDR/blob/main/QE%20Funding%20Agreement%20Queries/CountByMonthForPayment/Troubleshooting%20SQL/SystemWide-DailyTotals-FindSpikeDays.sql)
-- One source by day (pinpoints when a source changed): [Source-Detail-By-Day.sql](https://github.com/rsxmjb234/SQLForS3InventoryOfPDR/blob/main/QE%20Funding%20Agreement%20Queries/CountByMonthForPayment/Troubleshooting%20SQL/Source-Detail-By-Day.sql)
+- Per-QE CCD/TRN by submission month (the step-down table): [VolumeDecline-PerQE-CCD-TRN-BySubmissionMonth.sql](https://github.com/rsxmjb234/SQLForS3InventoryOfPDR/blob/main/QE%20Funding%20Agreement%20Queries/CountByMonthForPayment/Troubleshooting%20SQL/VolumeDecline-PerQE-CCD-TRN-BySubmissionMonth.sql)
+- System-wide daily totals / spike-day finder (uses last_modified intentionally): [SystemWide-DailyTotals-FindSpikeDays.sql](https://github.com/rsxmjb234/SQLForS3InventoryOfPDR/blob/main/QE%20Funding%20Agreement%20Queries/CountByMonthForPayment/Troubleshooting%20SQL/SystemWide-DailyTotals-FindSpikeDays.sql)
+- One source by day: [Source-Detail-By-Day.sql](https://github.com/rsxmjb234/SQLForS3InventoryOfPDR/blob/main/QE%20Funding%20Agreement%20Queries/CountByMonthForPayment/Troubleshooting%20SQL/Source-Detail-By-Day.sql)
 - One source over time (monthly): [Source-Detail-Over-Time.sql](https://github.com/rsxmjb234/SQLForS3InventoryOfPDR/blob/main/QE%20Funding%20Agreement%20Queries/CountByMonthForPayment/Troubleshooting%20SQL/Source-Detail-Over-Time.sql)
-- Per-source month A vs month B drill-down (who drove a drop): [Bronx-CCD-SourceDrilldown-Aug-vs-Oct.sql](https://github.com/rsxmjb234/SQLForS3InventoryOfPDR/blob/main/QE%20Funding%20Agreement%20Queries/CountByMonthForPayment/Troubleshooting%20SQL/Bronx-CCD-SourceDrilldown-Aug-vs-Oct.sql)
+- Per-source month A vs month B drill-down (adapt to Aug vs Sep): [Bronx-CCD-SourceDrilldown-Aug-vs-Oct.sql](https://github.com/rsxmjb234/SQLForS3InventoryOfPDR/blob/main/QE%20Funding%20Agreement%20Queries/CountByMonthForPayment/Troubleshooting%20SQL/Bronx-CCD-SourceDrilldown-Aug-vs-Oct.sql)
 - Day-anomaly "who spiked" explorer: [Day-Anomaly-Explore-WhoSpiked.sql](https://github.com/rsxmjb234/SQLForS3InventoryOfPDR/blob/main/QE%20Funding%20Agreement%20Queries/CountByMonthForPayment/Troubleshooting%20SQL/Day-Anomaly-Explore-WhoSpiked.sql)
-- Related memo (broad decline write-up): [ISSUE-PDR-Volume-Decline-Sept2026.md](https://github.com/rsxmjb234/SQLForS3InventoryOfPDR/blob/main/QE%20Funding%20Agreement%20Queries/CountByMonthForPayment/Troubleshooting%20SQL/ISSUE-PDR-Volume-Decline-Sept2026.md)
 
 ## Standing conventions (see rules.md)
 
 - Date documents by the key-path submission date (`<type>/YYYY/Mon/DD/`), NOT
-  `last_modified_date` (which is re-stamped by routine S3 attribute updates).
+  `last_modified_date` (re-stamped by routine S3 attribute updates).
 - Exclude backload, exclude orphans (Verato inner join), exclude pre-2026-03-11.
-- Read one recent complete inventory `dt` snapshot; scan reducer on
-  `last_modified_date >= 2026-03-11` does not affect results.
+- Read one recent complete inventory `dt` snapshot; the
+  `last_modified_date >= 2026-03-11` filter is a scan reducer only and does not
+  affect results.
