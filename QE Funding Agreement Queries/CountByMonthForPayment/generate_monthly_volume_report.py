@@ -43,6 +43,13 @@ from athena_hello_world import athena_query, confirm_month_ready, resolve_month 
 SQL_OF_RECORD = os.path.join(HERE, "Monthly-VolumneByQEByDataType.sql")
 
 
+def to_int(v):
+    try:
+        return int(str(v).strip())
+    except (ValueError, TypeError):
+        return 0
+
+
 def first_of_month(d):
     return date(d.year, d.month, 1)
 
@@ -104,87 +111,132 @@ def volume_memo_text(month_str, rows):
     y, m = (int(x) for x in month_str.split("-"))
     month_name = f"{calendar.month_name[m]}, {y}"
 
-    target_rows = [r for r in rows if r.get("month") == month_str]
-    # Only rows with a usable baseline can be assessed.
-    assessable = [r for r in target_rows
-                  if r.get("rolling_2mo_avg") not in (None, "", "0")
-                  and r.get("below_10pct_flag") in ("YES", "NO")]
-    flagged = [r for r in assessable if r.get("below_10pct_flag") == "YES"]
-    passed = [r for r in assessable if r.get("below_10pct_flag") == "NO"]
-    no_baseline = [r for r in target_rows if r not in assessable]
+    # SCOPE: CCD ONLY for the SLA determination this month. We do not yet have
+    # enough clean, stable data on Labs (recently onboarded) or TRN to measure
+    # them effectively, so the pass/fail is based exclusively on CCD volume.
+    #
+    # BASELINE: September 2026 is EXCLUDED due to a PDR data anomaly. Instead of
+    # the rolling 2-month average (which would include the anomalous September),
+    # we use a fixed baseline = the average of JULY and AUGUST CCD volume, and
+    # compare the target month against it. A QE fails if its target-month CCD
+    # volume is more than 10% below that Jul/Aug average.
+    base_month_1 = add_months(date(y, m, 1), -3)   # e.g. Oct target -> July
+    base_month_2 = add_months(date(y, m, 1), -2)   # e.g. Oct target -> August
+    bm1 = base_month_1.strftime("%Y-%m")
+    bm2 = base_month_2.strftime("%Y-%m")
+    bm1_name = calendar.month_name[base_month_1.month]
+    bm2_name = calendar.month_name[base_month_2.month]
 
-    # One-line headline conclusion (the "bottom line" for the memo).
-    flagged_qes = sorted({r["qe"] for r in flagged})
-    if not assessable:
+    def _ccd(qe, month):
+        for r in rows:
+            if r.get("qe") == qe and r.get("data_type") == "CCD" and r.get("month") == month:
+                return to_int(r.get("doc_count"))
+        return 0
+
+    target_rows = [r for r in rows
+                   if r.get("month") == month_str and r.get("data_type") == "CCD"]
+    ccd_qes = sorted({r["qe"] for r in target_rows})
+
+    assessed = []   # dicts: qe, target, baseline, pct, flag
+    for qe in ccd_qes:
+        baseline = round((_ccd(qe, bm1) + _ccd(qe, bm2)) / 2)
+        target = _ccd(qe, month_str)
+        if baseline <= 0:
+            continue
+        pct = round(100.0 * target / baseline)
+        assessed.append({
+            "qe": qe, "target": target, "baseline": baseline, "pct": pct,
+            "flag": "YES" if target < baseline * 0.9 else "NO",
+        })
+
+    flagged = [a for a in assessed if a["flag"] == "YES"]
+    passed = [a for a in assessed if a["flag"] == "NO"]
+    flagged_qes = sorted(a["qe"] for a in flagged)
+
+    if not assessed:
         conclusion = ("Conclusion: No determination could be made this month "
-                      "(no QE had a usable rolling baseline).")
+                      f"(no QE had usable {bm1_name}/{bm2_name} CCD baseline data).")
     elif flagged_qes:
-        conclusion = ("Conclusion: These QEs' volume dropped below SLA: "
+        conclusion = ("Conclusion: These QEs' CCD volume dropped below SLA: "
                       + ", ".join(flagged_qes) + ".")
     else:
-        conclusion = "Conclusion: No QE's volume dropped below SLA."
+        conclusion = "Conclusion: No QE's CCD volume dropped below SLA."
 
-    if not assessable:
+    if not assessed:
         result_line = (
-            "No QE/data-type combination for this month had a usable rolling baseline, "
-            "so no volume SLA determination can be made. (The rolling 2-month baseline "
-            "needs two prior months of data.)"
+            f"No QE had usable {bm1_name}/{bm2_name} CCD volume to form a baseline, "
+            "so no volume SLA determination can be made."
         )
     elif flagged:
-        viol = "; ".join(
-            f"{r['qe']} / {r['data_type']} ({r['pct_of_baseline']}% of baseline)"
-            for r in flagged
-        )
-        qe_set = sorted({r["qe"] for r in flagged})
+        viol = "; ".join(f"{a['qe']} ({a['pct']}% of baseline)" for a in flagged)
         result_line = (
-            f"The following QE/data-type combinations were more than 10% below baseline "
-            f"and therefore did NOT meet the volume SLA (treated as a PDR outage): {viol}. "
-            f"QE(s) affected: {', '.join(qe_set)}. All other assessed QE/data-type "
-            f"combinations met the volume SLA."
+            f"The following QEs submitted October CCD volume more than 10% below their "
+            f"{bm1_name}/{bm2_name} baseline and therefore did NOT meet the volume SLA "
+            f"(treated as a PDR outage): {viol}. All other assessed QEs met the CCD "
+            f"volume SLA."
         )
     else:
-        qe_set = sorted({r["qe"] for r in passed})
+        qe_set = sorted(a["qe"] for a in passed)
         result_line = (
-            f"All QEs PASSED: every assessed QE/data-type combination submitted volume "
-            f"within 10% of its rolling 2-month baseline, so no QE violated the volume SLA "
-            f"this month. QE(s) assessed and passing: {', '.join(qe_set)}."
+            f"All QEs PASSED: every assessed QE submitted CCD volume within 10% of its "
+            f"{bm1_name}/{bm2_name} baseline. QE(s) assessed and passing: "
+            f"{', '.join(qe_set)}."
         )
 
-    # Backup data table: per QE/data-type for the target month.
-    backup = _volume_backup_block(assessable + no_baseline)
+    # Backup data table: per QE, target vs Jul/Aug baseline.
+    backup = _ccd_baseline_block(assessed, month_str, bm1_name, bm2_name)
 
-    # Trend: doc_count per QE/data-type across every month in the window, so a
-    # multi-month decline is visible (the 10% rule only compares to 2 prior months).
+    # Trend: doc_count per QE/data-type across every month in the window.
     trend = _monthly_trend_block(rows)
 
-    nb_note = ""
-    if no_baseline:
-        combos = ", ".join(f"{r['qe']}/{r['data_type']}" for r in no_baseline)
-        nb_note = (
-            f"\nNote: the following had no usable baseline this month and were not "
-            f"assessed: {combos}.\n"
-        )
-
-    return f"""For purposes of performance monitoring and contractual compliance, each QE's submitted data volume is assessed against a rolling two-month average baseline, by data type. Per the funding agreement:
+    return f"""For purposes of performance monitoring and contractual compliance, each QE's submitted data volume is assessed against a baseline. Per the funding agreement:
 
 {AGREEMENT_LANGUAGE}
 
-Result in {month_name}
+Scope for this month: CCD only. We do not yet have enough clean, stable history
+to measure Labs or TRN effectively (Labs were only recently onboarded, and TRN
+volume is not yet reliable for baseline comparison), so this month's SLA
+determination is based exclusively on CCD volume. Labs and TRN are shown in the
+trend data below for context only and are not part of the pass/fail.
+
+Baseline for this month: September 2026 is EXCLUDED from the baseline due to a
+known data anomaly in the PDR during that month (a bulk re-stamp of S3 objects
+distorted September volume). Rather than the standard rolling 2-month average
+(which would include the anomalous September), this month compares October CCD
+volume against a fixed baseline = the average of {bm1_name} and {bm2_name} CCD
+volume. A QE is below SLA if its October CCD volume is more than 10% below that
+{bm1_name}/{bm2_name} average.
+
+Result in {month_name} (CCD)
 
 {conclusion}
 
 {result_line}
-{nb_note}
+
 Query that was used can be found in GitHub at the following path:
 
 {GITHUB_SQL_PATH}
 
 Direct link: {GITHUB_SQL_URL}
 
-Backup data (target month {month_str}: volume vs rolling 2-month baseline by QE and data type)
+Backup data (October CCD volume vs the {bm1_name}/{bm2_name} baseline, by QE)
 {backup}
-Monthly trend (document count by QE and data type across the full window - lets you see whether volume declined over several months, which the 2-month baseline alone cannot show):
+Monthly trend (document count by QE and data type across the full window; note September is anomalous and excluded from the baseline):
 {trend}"""
+
+
+def _ccd_baseline_block(assessed, target_month, bm1_name, bm2_name):
+    """Render October CCD volume vs the Jul/Aug baseline, per QE."""
+    if not assessed:
+        return "No QE had a usable baseline.\n"
+    header = ["qe", f"{target_month}_ccd", f"baseline_{bm1_name[:3]}_{bm2_name[:3]}_avg",
+              "pct_of_baseline", "below_10pct"]
+    lines = [" | ".join(header), "-" * 72]
+    for a in sorted(assessed, key=lambda x: x["qe"]):
+        lines.append(" | ".join([
+            a["qe"], f"{a['target']:,}", f"{a['baseline']:,}", f"{a['pct']}%", a["flag"],
+        ]))
+    return "\n".join(lines) + "\n"
 
 
 def _volume_backup_block(rows, max_rows=100):
