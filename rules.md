@@ -79,6 +79,49 @@ inventory, in addition to any dt/partition or window filters:
 AND last_modified_date >= timestamp '2026-03-11 00:00:00'
 ```
 
+## Submission Date — parse from the KEY, not last_modified_date (REQUIRED for volume)
+`last_modified_date` is NOT a reliable submission date. S3 updates it whenever an
+object's metadata changes or it is bulk-rewritten, and PDR does this routinely.
+Bulk re-stamp events (e.g. 2026-09-14, -15, -22) moved millions of OLD documents
+to a later last_modified_date, which falsely inflated monthly volume and hid real
+trends.
+
+The TRUE submission date is embedded in the S3 key path, which never changes once
+the object is written:
+
+```
+<assigningAuthority>/<type>/YYYY/Mon/DD/HH/...      e.g.  MMC/trn/2026/Aug/15/12/...
+```
+
+For ANY volume / counting / day / month analysis, derive the submission date from
+the key (verified to parse for 100% of ~300M documents):
+
+```sql
+TRY(date_parse(
+    regexp_extract(key, '(?i)(?:ccd|trn|lab|oru)/(\d{4}/[A-Za-z]{3}/\d{2})/', 1),
+    '%Y/%b/%d'
+)) AS submission_date
+```
+
+Then bucket/filter on `submission_date` (a DATE). Apply the clinical-data floor on
+it: `AND submission_date >= DATE '2026-03-11'`. You MAY keep
+`last_modified_date >= timestamp '2026-03-11 00:00:00'` as a pure scan reducer
+(re-stamps only move dates forward, so it never drops a valid row).
+
+Because dating by the key resolves re-stamped docs to their real dates, NO
+anomaly-day / bulk-spike-day exclusion list is needed. (The former 2026-09-14 /
+-15 / -22 exclusion rule is retired.)
+
+Exception: SystemWide-DailyTotals-FindSpikeDays.sql intentionally still counts by
+last_modified_date, because its purpose is to DETECT re-stamp artifact days.
+
+Note: the 240-minute gap query is a separate case — the key path only has
+hour-level granularity, so gap detection still uses last_modified_date timestamps.
+
+Note: outage/gap (240-minute) detection is NOT affected by this rule — a bulk of
+submissions on one day does not create gaps — so it is applied to volume queries,
+not required for the 240-minute query.
+
 ## Outage Detection Rules (240-Minute Rule)
 Outages are measured per:
 - QE
