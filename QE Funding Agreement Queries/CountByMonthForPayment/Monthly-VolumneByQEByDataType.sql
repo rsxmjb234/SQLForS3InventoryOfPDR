@@ -40,9 +40,10 @@ The final output format remains unchanged.
 
 WITH config AS (
     SELECT
-        DATE '2026-01-01' AS start_month,
-        DATE '2026-10-01' AS end_month,
-        '2026-11-01-01-00' AS single_snapshot_dt
+        DATE '2026-01-01' AS start_month,       -- << first day of first month (include 2+ months before assessment period)
+        DATE '2026-09-01' AS end_month,         -- << first day of last month to include
+        -- Single recent, complete snapshot partition to read from.
+        date_format(date_add('day', -2, current_date), '%Y-%m-%d-01-00') AS single_snapshot_dt
 ),
 
 -- Map PDR bucket QE names to Verato QE names.
