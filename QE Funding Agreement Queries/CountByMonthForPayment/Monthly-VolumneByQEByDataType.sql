@@ -33,7 +33,8 @@ WITH config AS (
     SELECT
         DATE '2026-01-01' AS start_month,
         DATE '2026-10-01' AS end_month,
-        '2026-11-01-01-00' AS single_snapshot_dt,
+        -- Single recent, complete snapshot partition to read from.
+        date_format(date_add('day', -2, current_date), '%Y-%m-%d-01-00') AS single_snapshot_dt
         DATE '2026-10-07' AS mapping_cutoff
 ),
 
