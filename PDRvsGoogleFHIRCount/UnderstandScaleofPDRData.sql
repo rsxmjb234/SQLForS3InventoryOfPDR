@@ -72,6 +72,9 @@ documents AS (
         AND i.is_latest = true
         AND coalesce(i.is_delete_marker, false) = false
         AND i.last_modified_date >= timestamp '2026-03-11 00:00:00'
+        -- GLOBAL RULE: exclude processed/ and error/ workflow-prefix objects
+        -- (historical FHIR-processing copies; see rules.md). Dropped like the date rule.
+        AND NOT regexp_like(lower(i.key), '^(processed|error)/')
         AND (
             regexp_like(lower(i.key), '(^|/)ccd(/|$)')
             OR regexp_like(lower(i.key), '(^|/)trn(/|$)')

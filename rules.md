@@ -79,6 +79,33 @@ inventory, in addition to any dt/partition or window filters:
 AND last_modified_date >= timestamp '2026-03-11 00:00:00'
 ```
 
+## Exclude `processed/` and `error/` objects (REQUIRED — global, like the date rule)
+Documents whose S3 key begins with the `processed/` or `error/` prefix are
+historical FHIR-processing workflow copies. Per the November 2026 business rule
+(from Dan Ruppert), they must NOT be counted in any analysis — they were copied
+back to their original paths during S3 cleanups and represent duplicate physical
+objects, not additional submissions.
+
+Apply this filter in EVERY query that reads the inventory, right alongside the
+clinical-data-start-date filter:
+
+```sql
+-- GLOBAL RULE: exclude processed/ and error/ workflow-prefix objects
+-- (historical FHIR-processing copies). Dropped like the pre-2026-03-11 date rule.
+AND NOT regexp_like(lower(key), '^(processed|error)/')
+```
+
+Notes:
+- Match only the FIRST path segment (`^(processed|error)/`), so a normal key that
+  merely contains the word "error" deeper in the path is not dropped.
+- This pairs with the existing backload exclusion
+  (`AND NOT regexp_like(lower(key), '(^|/)backload/')`); together they leave only
+  normal/direct-path submissions.
+- CAVEAT (known limitation): older months have more objects moved into
+  `processed/`/`error/` than recent months, so excluding them can understate
+  older months in a strict month-over-month trend. This is the agreed business
+  rule regardless; note it when interpreting cross-month comparisons.
+
 ## Submission Date — parse from the KEY, not last_modified_date (REQUIRED for volume)
 `last_modified_date` is NOT a reliable submission date. S3 updates it whenever an
 object's metadata changes or it is bulk-rewritten, and PDR does this routinely.

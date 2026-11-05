@@ -7,8 +7,11 @@ Goal:
   inventory snapshot, sampling every 10 days over the last 100 days.
 - This is the TOTAL documents in the system on that snapshot date (full
   snapshot population), NOT documents added that day.
-- ALL SOURCES — this version does NOT exclude anything. (Companion to
-  PDRvsGoogleFHIRCount.sql, which excludes sources not in the Verato MPI.)
+- ALL SOURCES including orphans — this version does NOT exclude sources that
+  are absent from the Verato MPI. (Companion to PDRvsGoogleFHIRCount.sql, which
+  excludes those orphan sources.) Note: per standing rules this query still
+  excludes backload and the processed/ and error/ workflow prefixes, and data
+  before 2026-03-11; "include orphans" refers only to Verato-absent sources.
 
 How the snapshot is read:
 - S3 Inventory is a full snapshot: each dt partition lists every object in the
@@ -71,6 +74,9 @@ WHERE
     AND coalesce(i.is_delete_marker, false) = false
     -- PDR data contributed before 2026-03-11 was only the HEADER information, not the clinical document; exclude it.
     AND i.last_modified_date >= timestamp '2026-03-11 00:00:00'
+    -- GLOBAL RULE: exclude processed/ and error/ workflow-prefix objects
+    -- (historical FHIR-processing copies; see rules.md). Dropped like the date rule.
+    AND NOT regexp_like(lower(i.key), '^(processed|error)/')
     AND NOT regexp_like(lower(i.key), '(^|/)backload(/|$)')
     AND (
         regexp_like(lower(i.key), '(^|/)ccd(/|$)')
