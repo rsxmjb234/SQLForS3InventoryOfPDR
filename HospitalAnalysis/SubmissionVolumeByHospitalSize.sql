@@ -115,6 +115,9 @@ parsed_inventory AS (
         AND coalesce(i.is_delete_marker, false) = false
         -- 'bad date' rule: pre-2026-03-11 was header-only, not clinical docs.
         AND i.last_modified_date >= timestamp '2026-03-11 00:00:00'
+        -- GLOBAL RULE: exclude processed/ and error/ workflow-prefix objects
+        -- (historical FHIR-processing copies; see rules.md). Dropped like the date rule.
+        AND NOT regexp_like(lower(i.key), '^(processed|error)/')
         AND i.size IS NOT NULL
         AND (
             regexp_like(lower(i.key), '(^|/)ccd(/|$)')

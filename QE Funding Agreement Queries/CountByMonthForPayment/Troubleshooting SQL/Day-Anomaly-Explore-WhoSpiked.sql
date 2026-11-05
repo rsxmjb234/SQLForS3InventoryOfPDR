@@ -58,6 +58,9 @@ scoped AS (
         AND i.is_latest = true
         AND coalesce(i.is_delete_marker, false) = false
         AND i.last_modified_date >= timestamp '2026-03-11 00:00:00'
+        -- GLOBAL RULE: exclude processed/ and error/ workflow-prefix objects
+        -- (historical FHIR-processing copies; see rules.md). Dropped like the date rule.
+        AND NOT regexp_like(lower(i.key), '^(processed|error)/')
         -- window = [anomaly_day - baseline_days, anomaly_day + 1 day)
         AND i.last_modified_date >= CAST(date_add('day', -c.baseline_days, c.anomaly_day) AS timestamp)
         AND i.last_modified_date <  CAST(date_add('day', 1, c.anomaly_day) AS timestamp)

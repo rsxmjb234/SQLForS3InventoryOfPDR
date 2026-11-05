@@ -72,6 +72,9 @@ docs AS (
         AND coalesce(i.is_delete_marker, false) = false
         -- Scan reducer only (re-stamps move dates forward; see rules.md).
         AND i.last_modified_date >= timestamp '2026-03-11 00:00:00'
+        -- GLOBAL RULE: exclude processed/ and error/ workflow-prefix objects
+        -- (historical FHIR-processing copies; see rules.md). Dropped like the date rule.
+        AND NOT regexp_like(lower(i.key), '^(processed|error)/')
         -- Exclude backload
         AND NOT regexp_like(lower(i.key), '(^|/)backload/')
         -- Only known doc types

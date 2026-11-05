@@ -13,6 +13,9 @@ other agreed-upon adjustments), the variance will be considered a PDR outage."
 Goal:
 - Monthly document count by QE and data type (CCD, TRN, ORU, LAB).
 - Excludes backload data — only real-time/normal submissions.
+- Excludes processed/ and error/ workflow-prefix objects — counts only the
+  direct root-path submission of each document (set 2026-11, to test whether the
+  processing-workflow copies were inflating earlier months).
 - Shows BOTH:
     1. Raw monthly volume (doc_count)
     2. Rolling 2-month average baseline (rolling_2mo_avg)
@@ -42,7 +45,7 @@ number of months in the window.
 WITH config AS (
     SELECT
         DATE '2026-01-01' AS start_month,       -- << first day of first month (include 2+ months before assessment period)
-        DATE '2026-09-01' AS end_month,         -- << first day of last month to include
+        DATE '2026-10-01' AS end_month,         -- << first day of last month to include
         -- Single recent, complete snapshot partition to read from.
         date_format(date_add('day', -2, current_date), '%Y-%m-%d-01-00') AS single_snapshot_dt
 ),
@@ -128,6 +131,9 @@ pdr_docs AS (
             -- true submission >= 2026-03-11 also has last_modified >= 2026-03-11.
             -- This does not affect results, only reduces data scanned.
             AND i.last_modified_date >= timestamp '2026-03-11 00:00:00'
+            -- GLOBAL RULE: exclude processed/ and error/ workflow-prefix objects
+            -- (historical FHIR-processing copies; see rules.md). Dropped like the date rule.
+            AND NOT regexp_like(lower(i.key), '^(processed|error)/')
             -- Exclude backload
             AND NOT regexp_like(lower(i.key), '(^|/)backload/')
             -- Only known doc types

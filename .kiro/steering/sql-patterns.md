@@ -38,8 +38,25 @@ When excluding backlog, the filter should be:
 AND NOT regexp_like(lower(i.key), '(^|/)backload(/|$)')
 ```
 
-This correctly excludes ONLY backlog while keeping processed/, error/, and normal paths.
-Documents in `processed/` and `error/` paths are real-time submissions (not backlog).
+This excludes backlog paths. Note: assigning-authority extraction still handles
+`processed/` and `error/` prefixes (see above) because those keys must be
+*parsed* correctly before they are excluded by the rule below.
+
+## Excluding `processed/` and `error/` (REQUIRED — global, like the date rule)
+
+Per the November 2026 business rule, `processed/` and `error/` objects are
+historical FHIR-processing workflow copies and must be excluded from ALL
+analysis — they are duplicate physical objects, not additional submissions. Add
+this filter everywhere the inventory is read, next to the date rule:
+
+```sql
+-- GLOBAL RULE: exclude processed/ and error/ workflow-prefix objects
+AND NOT regexp_like(lower(i.key), '^(processed|error)/')
+```
+
+Match only the FIRST path segment so a normal key that merely contains the word
+"error" deeper in its path is not dropped. See rules.md for the full rule and its
+cross-month caveat.
 
 ## Classifying Path Types (for detail queries)
 

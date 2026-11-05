@@ -31,6 +31,9 @@ WHERE bucket LIKE 'nyec-pdr-prod-%'
   AND coalesce(is_delete_marker, false) = false
   -- PDR data contributed before 2026-03-11 was only the HEADER information, not the clinical document; exclude it.
   AND last_modified_date >= timestamp '2026-03-11 00:00:00'
+  -- GLOBAL RULE: exclude processed/ and error/ workflow-prefix objects
+  -- (historical FHIR-processing copies; see rules.md). Dropped like the date rule.
+  AND NOT regexp_like(lower(key), '^(processed|error)/')
   -- Single most-recent complete snapshot partition (adjust to a real dt value)
   AND dt = date_format(date_add('day', -1, current_date), '%Y-%m-%d-01-00')
   -- Window of submission days you want to see
