@@ -10,18 +10,18 @@ Corrections:
    Normalize these prefixes and deduplicate by
    bucket + canonical key.
 
-2. Verato-only filtering excludes legitimate
-   pre-mapping submissions.
+2. Verato-only filtering (NYeC decision, Nov 2026).
 
-   Include a document when:
-   - Its AA exists in Verato, OR
-   - Its submission date is before 2026-10-07,
-     its AA is absent from Verato, AND
-     its AA is absent from the PDR mapping's
-     "PDR Assigning Authority" column.
+   Include a document ONLY when its AA exists in
+   the Verato export (lookup_verato_aa). Any
+   source not in Verato is excluded.
 
-   Known mapped aliases are excluded when not
-   independently present in Verato.
+   Dan's PR proposed also counting pre-Oct 7
+   unmapped sources, minus known aliases from a
+   PDR AA mapping table. That table
+   (lookup_pdr_aa_mapping) does not exist in
+   Athena, and the Verato-only rule already
+   handles this, so that branch was removed.
 
 3. Preserve the original reporting output:
    month, qe, data_type, doc_count,
@@ -35,7 +35,6 @@ WITH config AS (
         DATE '2026-10-01' AS end_month,
         -- Single recent, complete snapshot partition to read from.
         date_format(date_add('day', -2, current_date), '%Y-%m-%d-01-00') AS single_snapshot_dt
-        DATE '2026-10-07' AS mapping_cutoff
 ),
 
 -- Map PDR QE names to Verato QE names.
@@ -81,25 +80,6 @@ verato_norm AS (
 
     JOIN qe_name_map m
         ON upper(trim(v.qe)) = upper(m.verato_name)
-),
-
--- Known PDR assigning authorities that have
--- been mapped to corrected Verato authorities.
---
--- These are column B in the mapping spreadsheet.
--- Match on both QE and AA.
-mapped_aliases AS (
-    SELECT DISTINCT
-        lower(trim(qe)) AS pdr_qe,
-
-        upper(trim(
-            pdr_assigning_authority
-        )) AS aa_key
-
-    FROM pdr_inventory.lookup_pdr_aa_mapping
-
-    WHERE pdr_assigning_authority IS NOT NULL
-      AND trim(pdr_assigning_authority) <> ''
 ),
 
 -- Read one S3 inventory snapshot.
@@ -219,15 +199,11 @@ parsed AS (
     FROM inventory
 ),
 
--- Apply Verato and mapping eligibility.
+-- Apply Verato eligibility.
 --
--- Verato match: always included.
---
--- Not in Verato, before October 7:
---   Include only if absent from mapping column B.
---
--- Not in Verato, October 7 onward:
---   Excluded from this reporting population.
+-- Only sources present in the Verato export are
+-- counted (inner join). Sources not in Verato
+-- (orphans) are excluded.
 eligible_docs AS (
     SELECT DISTINCT
         p.bucket,
@@ -244,13 +220,9 @@ eligible_docs AS (
 
     CROSS JOIN config c
 
-    LEFT JOIN verato_norm v
+    JOIN verato_norm v
         ON p.qe = v.pdr_qe
        AND p.assigning_authority = v.aa_key
-
-    LEFT JOIN mapped_aliases m
-        ON p.qe = m.pdr_qe
-       AND p.assigning_authority = m.aa_key
 
     WHERE p.submission_day IS NOT NULL
 
@@ -262,22 +234,6 @@ eligible_docs AS (
           date_add('month', 1, c.end_month)
 
       AND p.data_type IS NOT NULL
-
-      -- Updated inclusion rule.
-      AND (
-          -- Already recognized by Verato.
-          v.aa_key IS NOT NULL
-
-          OR
-
-          (
-              -- Historical unmapped submission.
-              p.submission_day < c.mapping_cutoff
-
-              -- Not a known mapping alias.
-              AND m.aa_key IS NULL
-          )
-      )
 ),
 
 -- Count each canonical object once per bucket.
