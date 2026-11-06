@@ -1,10 +1,10 @@
-# [ACTION REQUIRED] HIXNY CCD submission volume below funding-agreement baseline — October 2026
+# [CLARIFICATION REQUESTED] HIXNY CCD October 2026 flagged by baseline formula; driven by a September spike in HEC* sources
 
 **To:** Hixny (HIE operations / data submission team)
 **From:** NYeC PDR Analytics
 **Date:** November 4, 2026
-**Type:** Funding-agreement volume variance / PDR outage notice
-**Data type in scope:** CCD (Continuity of Care Documents)
+**Type:** Funding-agreement volume variance review
+**Data type in scope:** CCD
 **Period in scope:** October 2026
 **Reporting source:** Athena `pdr_inventory.pdr_inventory_prod_data_all`
 (prod S3 inventory), single snapshot, AWS account 220065406231
@@ -13,25 +13,24 @@
 
 ## 1. Summary
 
-NYeC monitoring shows Hixny's **CCD** submission volume to the PDR in
-**October 2026 fell below the funding-agreement baseline** and triggers the
-"more than 10% below baseline" threshold. Under the agreement, a sustained
-variance of this size that is not attributable to an agreed-upon change is
-treated as a PDR outage.
+Applied literally, the funding-agreement formula flags Hixny's **October 2026
+CCD volume at 86% of baseline**, which is below the 90% threshold.
 
-We are notifying Hixny so we can either (a) identify and correct a submission
-issue, or (b) document an agreed-upon cause that would exclude the variance.
+Our review shows this flag is **caused by the baseline, not by a drop in normal
+Hixny submissions.** The baseline (average of August and September) is inflated
+by a one-time September surge from a cluster of 161 `HEC*` assigning
+authorities. Excluding that cluster, Hixny's remaining CCD sources submitted
+**106% of their own August/September average in October** (2.15M vs 2.02M).
 
-Our analysis shows two things driving the shortfall: (1) a large **September-only
-spike** in a cluster of Hixny sources (the `HEC*` authorities) that did not
-repeat in October, which also inflated the rolling baseline, and (2) **moderate
-softening (~79–94% of baseline) across Hixny's steady CCD feeds**. No individual
-facility went dark. Rochester Regional (RRH) and Westchester Medical (WMC) have
-been removed from all figures in this notice by prior agreement.
+We are not asserting an outage. We need Hixny to explain the September `HEC*`
+surge so we can decide how the baseline should be treated under the agreement.
+
+Rochester Regional (RRH*) and Westchester Medical (WMC*) have been removed from
+every figure in this notice, by prior agreement.
 
 ---
 
-## 2. Funding-agreement language (basis for this notice)
+## 2. Funding-agreement language
 
 > "The total volume of data submitted is expected to remain consistent month to
 > month. For purposes of performance monitoring, each QE will be required to
@@ -43,182 +42,146 @@ been removed from all figures in this notice by prior agreement.
 > attributable to expected changes (e.g., participant onboarding/offboarding or
 > other agreed-upon adjustments), the variance will be considered a PDR outage."
 
-The baseline is a **rolling two-month average of submitted volume, by data
-type.** October's CCD baseline is therefore the average of Hixny's August and
-September CCD volume.
+October's CCD baseline is the average of Hixny's August and September CCD
+volume.
 
 ---
 
-## 3. The variance (Hixny CCD, by month)
+## 3. The formula result (Hixny CCD, RRH/WMC removed)
 
-Monthly Hixny CCD document counts submitted to the PDR (Verato-matched sources,
-backload excluded, dated by the submission date in the S3 key path). Per the
-agreement, October's baseline is the **rolling two-month average of the two
-immediately preceding months — August and September.**
-
-**Rochester Regional Health (RRH*) and Westchester Medical Center (WMC*) have
-been removed from every query behind this ticket** — all monthly totals, the
-SLA calculation, and the per-source table in §4. That data is supplied by
-another designated HIN, so by agreement it is set aside and is not part of this
-variance.
-
-| Month | Hixny CCD (excl. RRH/WMC) | Role |
-|-------|---------------------------|------|
-| Jun 2026 | 2,898,931 | prior trend |
-| Jul 2026 | 3,164,965 | prior trend |
-| Aug 2026 | 3,172,241 | baseline input |
-| Sep 2026 | 4,396,873 | baseline input (abnormally high — see §5) |
+| Month | Hixny CCD | Role |
+|-------|-----------|------|
+| Aug 2026 | 2,047,567 | baseline input |
+| Sep 2026 | 4,396,873 | baseline input (inflated by `HEC*`, see §4) |
 | **Oct 2026** | **2,758,672** | **month in scope** |
-
-**SLA calculation for October (per the contract formula):**
 
 | Item | Value |
 |------|-------|
-| Rolling 2-month baseline = avg(Aug, Sep) = (3,172,241 + 4,396,873) / 2 | **3,784,557** |
+| Baseline = avg(Aug, Sep) = (2,047,567 + 4,396,873) / 2 | **3,222,220** |
 | October actual | 2,758,672 |
-| October as % of baseline | **73%** |
-| 10%-below threshold (90% of baseline) | 3,406,101 |
-| Result | **BELOW baseline — variance flagged** |
+| October as % of baseline | **86%** |
+| 90% threshold | 2,899,998 |
+| Formula result | **Below threshold** |
 
-October CCD (2,758,672) is below the 90%-of-baseline threshold (3,406,101),
-so October is flagged under the agreement. The baseline uses only the rolling
-two preceding months (August and September); June and July are shown for trend
-context but are not part of the October baseline calculation.
-
-October (2,758,672) is also below Hixny's steady June–August range (≈2.9–3.2M),
-so the shortfall is not solely an artifact of the high September — October is
-soft against the normal months as well.
-
-> Note for context: September was an unusually high CCD month for Hixny (≈4.4M
-> vs a ≈2.9–3.2M June–August range), which raises the rolling baseline. Most of
-> that spike came from a specific cluster of sources (see §4); we want to
-> understand it with you (§5), since it affects how the baseline should be read.
-> Even so, October falls below the contract's 90%-of-baseline threshold, which
-> is why we are flagging it.
+For context, Hixny's CCD volume in June and July was 2,111,187 and 2,007,317.
+October (2,758,672) is **above** that normal range. The formula flags October
+only because September was abnormally high.
 
 ---
 
-## 4. Where the shortfall is (per source, vs the rolling 2-month average)
+## 4. Where the variance comes from
 
-For each Hixny CCD assigning authority we computed October as a percentage of
-that source's **rolling two-month average (avg of August and September)** — the
-same measure the SLA uses — so the per-source view is consistent with §3.
-**RRH*/WMC* are removed here too.**
+We split Hixny's CCD volume into the `HEC*` assigning authorities (161 sources)
+and everything else (593 sources):
 
-Top Hixny CCD sources by rolling 2-month volume (monthly CCD counts):
+| Month | `HEC*` sources | All other sources | Total |
+|-------|----------------|-------------------|-------|
+| Jun | 42,400 | 2,068,787 | 2,111,187 |
+| Jul | 58,456 | 1,948,861 | 2,007,317 |
+| Aug | 46,600 | 2,000,967 | 2,047,567 |
+| **Sep** | **2,356,138** | 2,040,735 | 4,396,873 |
+| Oct | 609,209 | 2,149,463 | 2,758,672 |
 
-| Assigning authority | Aug | Sep | Oct | Rolling 2-mo avg (Aug,Sep) | Oct % of rolling |
-|---------------------|-----|-----|-----|----------------------------|------------------|
-| HECG | 4,080 | 535,778 | 184,657 | 269,929 | 68% |
-| CCPDOC | 276,293 | 203,537 | 220,880 | 239,915 | 92% |
-| SPHPMONITORDOC | 200,037 | 136,667 | 133,403 | 168,352 | 79% |
-| HECUHS | 3,565 | 326,114 | 100,875 | 164,840 | 61% |
-| HECAMP | 1,818 | 263,116 | 45,932 | 132,467 | 35% |
-| HECUMU | 24,958 | 209,924 | 32,093 | 117,441 | 27% |
-| 1336193838 | 147,989 | 79,919 | 95,385 | 113,954 | 84% |
-| SPHPSJHDOC | 130,739 | 92,959 | 89,378 | 111,849 | 80% |
-| MIBDOC | 114,617 | 83,975 | 88,658 | 99,296 | 89% |
-| HECMVHS | 2,225 | 177,602 | 26,942 | 89,914 | 30% |
-| 4965 | 93,222 | 60,527 | 70,000 | 76,875 | 91% |
-| CITIADVOC | 93,216 | 58,544 | 52,447 | 75,880 | 69% |
-| 7343 | 75,013 | 54,393 | 57,833 | 64,703 | 89% |
-| 2904 | 79,651 | 48,986 | 57,822 | 64,319 | 90% |
-| HHHN | 72,328 | 42,426 | 45,106 | 57,377 | 79% |
-| ALBANYENT | 73,053 | 38,400 | 52,338 | 55,727 | 94% |
-| ORTHONY | 52,038 | 32,286 | 29,323 | 42,162 | 70% |
+- **`HEC*` sources:** about 40-60K per month through August, then 2.36M in
+  September, then 609K in October. This one cluster accounts for the entire
+  September surge and the October "drop."
+- **All other sources:** steady at 1.95-2.07M per month and 2.15M in October.
+  Against their own August/September average (2,020,851), October is **106%**.
 
-(Full per-source detail for all remaining Hixny CCD sources is attached as
-`results-hixny-ccd-source-drilldown-Aug-Sep-Oct.csv`.)
+Largest `HEC*` sources (monthly CCD counts):
 
-Key observations:
-- **Two different things are mixed in the shortfall.**
-  1. **A September-only spike in the `HEC*` sources.** HECG, HECUHS, HECAMP,
-     HECUMU, HECMVHS and similar were near-zero in August, surged to hundreds of
-     thousands in September, then fell back sharply in October. This cluster is
-     what pushed Hixny's September total to ≈4.4M and is the main reason the
-     rolling baseline is high. We need Hixny to explain this September event
-     (see §5) — it looks like a one-time backfill/re-submission rather than
-     normal monthly flow.
-  2. **Genuine softness in the steady feeds.** The consistently large sources
-     (CCPDOC, SPHPMONITORDOC, 1336193838, SPHPSJHDOC, MIBDOC, 4965, etc.) are
-     running at roughly **79–94%** of their rolling 2-month average in October —
-     a real but moderate decline, not a shut-off.
-- **No mass shut-off.** Essentially every source is still submitting in October;
-  volumes are lower, not zero.
-- **Net effect:** October is below baseline both because the September `HEC*`
-  spike did not repeat and because the steady feeds softened. Understanding the
-  September `HEC*` event is the single biggest factor in setting a fair baseline.
+| Assigning authority | Aug | Sep | Oct |
+|---------------------|-----|-----|-----|
+| HECG | 3,269 | 535,778 | 184,657 |
+| HECUHS | 2,709 | 326,114 | 100,875 |
+| HECAMP | 1,413 | 263,116 | 45,932 |
+| HECUMU | 12,790 | 209,924 | 32,093 |
+| HECMVHS | 1,629 | 177,602 | 26,942 |
+| HECTSJHHC | 989 | 160,622 | 37,056 |
+| HECFCMG | 429 | 71,522 | 18,482 |
+| HECCNYC | 348 | 55,099 | 7,456 |
+
+Largest other sources, with October as a percentage of each source's rolling
+two-month average (August and September):
+
+| Assigning authority | Aug | Sep | Oct | Rolling 2-mo avg | Oct % of rolling |
+|---------------------|-----|-----|-----|------------------|------------------|
+| CCPDOC | 193,057 | 203,537 | 220,880 | 198,297 | 111% |
+| SPHPMONITORDOC | 113,560 | 136,667 | 133,403 | 125,114 | 107% |
+| SPHPSJHDOC | 94,424 | 92,959 | 89,378 | 93,692 | 95% |
+| MIBDOC | 78,729 | 83,975 | 88,658 | 81,352 | 109% |
+| 1336193838 | 81,108 | 79,919 | 95,385 | 80,514 | 118% |
+| 4965 | 59,420 | 60,527 | 70,000 | 59,974 | 117% |
+| CITIADVOC | 50,208 | 58,544 | 52,447 | 54,376 | 96% |
+| 7343 | 52,843 | 54,393 | 57,833 | 53,618 | 108% |
+| 2904 | 55,171 | 48,986 | 57,822 | 52,079 | 111% |
+| ALBANYENT | 52,311 | 38,400 | 52,338 | 45,356 | 115% |
+| HHHN | 40,579 | 42,426 | 45,106 | 41,503 | 109% |
+| ORTHONY | 31,293 | 32,286 | 29,323 | 31,790 | 92% |
+
+Of the 581 non-`HEC*` sources that had volume in August or September, 119
+(about 20%) were below 90% of their own average in October. The other sources
+were at or above it. This is ordinary source-to-source variation, not a
+platform-wide decline.
+
+Full per-source detail is attached as
+`results-hixny-ccd-source-drilldown-Aug-Sep-Oct.csv` (columns include Jun-Oct
+counts, the rolling two-month average and October as a percentage of it).
 
 ---
 
 ## 5. What we need from Hixny
 
-Please help us determine whether this variance is attributable to an
-agreed-upon change or is a correctable submission issue. Specifically:
+1. **Explain the September `HEC*` surge.** 161 `HEC*` assigning authorities went
+   from roughly 47K CCDs in August to 2.36M in September, then 609K in October.
+   Was this a backfill, a re-submission, onboarding of new participants, or a
+   re-routing of sources into the Hixny bucket? Is any of it expected to
+   continue?
+2. **Confirm whether the `HEC*` volume is expected, recurring volume.** The
+   answer decides whether the September baseline should be adjusted, for
+   example as a one-time event outside "submitted volume," or treated as
+   participant onboarding.
+3. **Confirm there was no change to normal Hixny feeds in October.** Our data
+   shows none (the remaining sources are at 106% of baseline), but we want
+   Hixny to confirm.
 
-1. **Any submission/connector/interface change on or around late August –
-   September 2026** (routing, filtering, de-duplication, platform migration,
-   throttling, credential/endpoint change) that could reduce CCD volume broadly.
-2. **The September `HEC*` spike (highest priority).** A cluster of `HEC*`
-   sources (HECG, HECUHS, HECAMP, HECUMU, HECMVHS, and similar) were near-zero
-   in August, surged to hundreds of thousands of CCDs in September, then dropped
-   back in October. This single event raised Hixny's September total to ≈4.4M
-   and inflated the rolling baseline. Was this a one-time backfill, re-submission,
-   or onboarding event? Knowing this is essential to setting a fair baseline.
-3. **The steady feeds at ~79–94%.** The consistently large sources are modestly
-   below their rolling average in October. Any connector/interface/throttling
-   change in that window that would reduce normal CCD flow?
-4. **Any other planned/agreed reductions** beyond RRH/WMC — participant
-   offboarding or other adjustments NYeC has agreed to. We have already removed
-   Rochester Regional (RRH*) and Westchester Medical (WMC*) from all figures per
-   our prior discussion. Our source-level review does **not** show any additional
-   specific facilities turning off, so if there is another intended, scoped
-   reduction, please identify the facilities so we can reconcile.
+Until we have Hixny's answer on item 1, NYeC is treating October as **under
+review** rather than as a PDR outage.
 
 ---
 
-## 6. Method / reproducibility (for your technical team)
+## 6. Method / reproducibility
 
 - Source: one recent complete S3 inventory snapshot of
   `pdr_inventory.pdr_inventory_prod_data_all` (bucket `nyec-pdr-prod-hixny*`).
 - CCD identified by the `ccd` path segment in the S3 key.
-- Submission date parsed from the key path `<AA>/ccd/YYYY/Mon/DD/…`, **not**
-  `last_modified_date` (which is re-stamped by routine S3 attribute updates and
-  is unreliable for dating submissions).
-- **Backlog data is excluded.** Any object tagged/pathed as backload (i.e. keys
-  under a `backload/` prefix) is removed; only normal real-time submissions are
-  counted. This ensures the comparison reflects ongoing submission volume, not
-  one-time historical backloads.
-- `processed/` and `error/` workflow-prefix objects **are included** and counted
-  as real submissions. (Excluding them is not safe for a month-over-month SLA:
-  older months have had many objects moved into `processed/`/`error/` during
-  FHIR processing while recent months have not, so excluding those prefixes would
-  depress older months relative to recent ones and distort the comparison.)
-  pre-2026-03-11 excluded (header-only era).
-- Assigning authority parsed per the standard rule (path segment after any
-  `processed`/`error`/`backload` prefix).
-- **Rochester Regional Health (RRH*) and Westchester Medical Center (WMC*) are
-  removed from every query behind this notice** — the monthly totals, the SLA
-  calculation in §3, and the per-source table and attached CSV in §4. That data
-  is supplied by another designated HIN and is set aside by agreement.
+- Submission date parsed from the key path `<AA>/ccd/YYYY/Mon/DD/...`, not
+  `last_modified_date` (which is re-stamped by routine S3 attribute updates).
+- Backload data is excluded (keys under a `backload/` prefix).
+- `processed/` and `error/` objects are excluded. Per Dan Ruppert's analysis
+  they are duplicate copies of objects that also exist at the original root
+  path, left by S3 cleanups. We confirmed this: de-duplicating on the canonical
+  key gives exactly the same counts as excluding those prefixes.
+- Data before 2026-03-11 is excluded (header-only era).
+- Only sources present in the Verato export (`lookup_verato_aa`) are counted.
+- Rochester Regional Health (RRH*) and Westchester Medical Center (WMC*) are
+  removed from every query and table in this notice. That data is supplied by
+  another designated HIN and is set aside by agreement.
 - Baseline = rolling two-month average of submitted CCD volume (August and
-  September), per the funding agreement. Per-source percentages in §4 use the
-  same rolling two-month average, for consistency with the SLA.
+  September), per the funding agreement. Per-source percentages use the same
+  rolling two-month average.
 
 **Attachments / query artifacts:**
-- `results-hixny-ccd-source-drilldown-Aug-Sep-Oct.csv` — per-source Aug/Sep/Oct.
+- `results-hixny-ccd-source-drilldown-Aug-Sep-Oct.csv` - per-source Jun-Oct.
 - Query of record: `QE Funding Agreement Queries/CountByMonthForPayment/Monthly-VolumneByQEByDataType.sql`
 
 ---
 
-## 7. Requested next steps & timeline
+## 7. Next steps
 
-1. Hixny to review items in §5 and respond with any known change or
-   agreed-upon reduction.
-2. If a submission issue is identified, Hixny to remediate and confirm CCD
-   volume returns to baseline.
-3. If the variance is attributable to an agreed-upon change, NYeC and Hixny to
-   document it so the October variance is excluded from the outage determination.
+1. Hixny to respond to §5.
+2. NYeC and Hixny to agree how the September `HEC*` volume is treated in the
+   baseline.
+3. NYeC to re-run October against the agreed baseline and close or escalate.
 
-Please acknowledge receipt and provide an initial response by **[DATE — suggest
-5 business days]**.
+Please acknowledge receipt and respond by **[DATE - suggest 5 business days]**.
