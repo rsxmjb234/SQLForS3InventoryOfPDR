@@ -4,3 +4,6 @@
 # Allow CSVs in FindingOrphanSources to be tracked
 !FindingOrphanSources/
 !FindingOrphanSources/*.csv
+# Allow the hospital volume/SPARCS analysis inputs and results to be tracked
+!PDRHospitalDataVolumneAnalaysisIncludingSparcsForSize/
+!PDRHospitalDataVolumneAnalaysisIncludingSparcsForSize/**/*.csv

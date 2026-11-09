@@ -21,6 +21,14 @@ Assigning Authority is parsed from the S3 key path:
 - If the first path segment is one of `processed`, `error`, or `backload`, use path segment 2
 - Otherwise, use path segment 1
 
+**Hixny "DOC" convention (hospital reporting).** In the `hixny` bucket, Hixny files
+a hospital's CCDs under its assigning authority with "DOC" added (for example
+`MIBDOC` for `MIB`, `AMHSAMCHDOC` for `AMHSAMCH`). Both belong to the same hospital,
+so when matching Hixny volume to the hospital roster, strip a trailing `DOC` from
+the AA (`MIBDOC` -> `MIB`). Apply it only to the hixny bucket. We follow Hixny's
+lead here instead of asking them to change. See
+`PDRHospitalDataVolumneAnalaysisIncludingSparcsForSize/2-SQL/HospitalSystemsByQE-SparcsVsVolume.sql`.
+
 ### Data Type (Required)
 Required data types for outage compliance are:
 - CCD
@@ -40,6 +48,14 @@ regexp_like(lower(key), '(^|/)lab(/|$)')
 Labs are a distinct document type from CCD and TRN. When counting "labs" in
 reporting (e.g., the PDR fact sheet), use the `lab` token — NOT `oru`. Earlier
 queries guessed labs were under an `oru` segment; the actual segment is `lab`.
+
+**ORU and LAB are the SAME thing — the terms are interchangeable (REQUIRED).**
+ORU is the HL7 message type for a lab result, and lab results are stored under the
+`lab` path segment. Never report ORU and LAB as separate columns, data types or
+counts (an `oru` column is always zero and only adds noise). Pick ONE data type,
+call it **LAB**, and count it with the `lab` segment. Wherever these rules list
+"ORU" as a required data type (for example the 240-minute rule or the Operational
+Expectations), read it as LAB.
 
 ### Time
 - Reporting day is yesterday (a full completed day).

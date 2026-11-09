@@ -82,6 +82,18 @@ WITH config AS (
 ),
 ```
 
+## ORU = LAB (one data type, never both)
+
+ORU and LAB are interchangeable terms for the same document type (lab results).
+In PDR they live under the `lab` path segment. Do NOT create separate ORU and LAB
+columns, counts or flags. Use a single **LAB** data type matched with:
+
+```sql
+regexp_like(lower(i.key), '(^|/)lab(/|$)')
+```
+
+See rules.md for the full rule.
+
 ## Data Start Date — March 11, 2026 (REQUIRED)
 
 Data before **March 11, 2026** is not valid for clinical analysis and must be
