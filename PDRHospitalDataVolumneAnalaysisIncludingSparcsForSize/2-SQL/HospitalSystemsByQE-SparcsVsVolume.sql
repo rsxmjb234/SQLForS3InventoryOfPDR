@@ -46,9 +46,9 @@ ONE ROW PER HOSPITAL PER AA
   shown as a row when the same hospital has data on another AA, so one hospital
   does not look like several chains with N N N N rows beside the real one. A
   hospital is never left without a row: if NONE of its AAs has data, its silent
-  row(s) stay so it shows up as a zero. Nothing is lost: hospital_aas still lists
-  every AA the hospital is known by (including the hidden ones), which is the list
-  of codes Salesforce needs to refresh. AA-level totals are unaffected.
+  row(s) stay so it shows up as a zero. hospital_aa_count still counts every AA
+  the hospital is known by (including the hidden ones). AA-level totals are
+  unaffected.
 
 WHICH HOSPITALS ARE IN THE REPORT (~194 distinct)
 - The SFDC roster holds more than hospitals (imaging centers, extension clinics,
@@ -75,13 +75,13 @@ its SPARCS size says it should?"
   A big system sending little of a type has a big positive gap.
 - Result:
       NULL    the system sends none of that type (nothing to test), or it is a
-              PART 2 AA (code ends in -2), which is skipped and not ranked
+              PART 2 AA (code ends in -2 or contains PART2), skipped and not ranked
       'pass'  gap is under 20 places (sniff_gap_limit in the config block)
       'fail'  gap is 20 places or more (far less data than a system of that size
               should send)
   A negative gap (more data than the size predicts) always passes.
-- NOT JUDGED: PART 2 AAs (codes ending in -2, substance-use feeds that are small by
-  design) get NULL and are left out of the ranks. Hospitals with no SPARCS size are
+- NOT JUDGED: PART 2 AAs (codes ending in -2 or containing PART2, substance-use
+  feeds that are small by design) get NULL and are left out of the ranks. Hospitals with no SPARCS size are
   not in the report at all, so they are never judged either.
 - The limit counts places within the list of senders of that type, so it is a bigger
   slice of a short list (CCD has far fewer senders than ADT). Change sniff_gap_limit
@@ -90,13 +90,12 @@ its SPARCS size says it should?"
 COLUMNS, in output order:
   qe, chain_name, chain_aa, hospital_name, nys_facility_id,
   chain_size_tier, sends_ccd, sends_trn, sends_lab, sends_adt, hospital_size_tier,
-  ccd_sniff, adt_sniff, oru_sniff, then aa_source, hospital_aas, hospital_aa_count,
+  ccd_sniff, adt_sniff, oru_sniff, then aa_source, hospital_aa_count,
   chain_hospital_count, annual_ccd, annual_trn, annual_lab, annual_adt,
   hospital_annual_adt, volume_bucket_qes, count_chain_once, count_hospital_once.
-- hospital_aas is every AA the hospital is known by: the Salesforce roster AAs, plus
-  the ADT-file AAs and the Hixny DOC AA. It includes silent AAs whose rows are
-  hidden, so it can list more AAs than the hospital has rows; hospital_aa_count
-  is the matching count.
+- hospital_aa_count is how many AAs the hospital is known by: the Salesforce roster
+  AAs, plus the ADT-file AAs and the Hixny DOC AA. It includes silent AAs whose
+  rows are hidden, so it can be more than the hospital's row count.
 - qe (the QE of the AA: the roster's QE when the roster lists the AA, otherwise
   the QE in the ADT file - TXD/techbd is shown as healthelink - and Hixny for DOC
   rows. Every hospital row of an AA shows the same label, "a/b" when its
@@ -105,7 +104,7 @@ COLUMNS, in output order:
   hospitals that also appear under another QE.),
   chain_name (guess = the AA's largest hospital + AA), chain_aa, aa_source,
   hospital_name, nys_facility_id
-- hospital_aas (every AA this hospital is known by, incl. hidden silent ones), hospital_aa_count
+- hospital_aa_count (AAs this hospital is known by, incl. hidden silent ones)
 - sends_ccd, sends_trn, sends_lab, sends_adt (Y/N: does this AA send that type at
   all in the window). LAB = lab results (ORU messages); in PDR they sit under the
   `lab` path segment, so there is no separate ORU column.
@@ -341,10 +340,9 @@ pair_rows AS (
                AND coalesce(v.ccd + v.trn + v.lab, 0) = 0)
 ),
 
--- All the AAs a hospital has a row for.
-hospital_aas AS (
+-- How many AAs a hospital is known by (counted before silent rows are hidden).
+hospital_aa_counts AS (
     SELECT nys_facility_id,
-           array_join(array_sort(array_agg(aa)), ',') AS hospital_aas,
            count(*) AS hospital_aa_count
     FROM pair_rows
     GROUP BY nys_facility_id
@@ -368,9 +366,10 @@ chain_vol AS (
         -- ADT is per hospital, so the AA total is the SUM of its hospitals.
         sum(adt_total) AS chain_adt_total,
         max(volume_bucket_qes) AS volume_bucket_qes,
-        -- PART 2 (substance-use) feeds: HealtheConnections codes ending in -2. They carry
-        -- tiny volume by design, so they are left out of the sniff tests.
-        (aa LIKE '%-2') AS is_part2
+        -- PART 2 (substance-use) feeds: codes ending in -2 (HealtheConnections) or
+        -- containing PART2 (e.g. ECMC2PART2). They carry tiny volume by design, so
+        -- they are left out of the sniff tests.
+        (aa LIKE '%-2' OR aa LIKE '%PART2%') AS is_part2
     FROM pair_rows
     GROUP BY aa
 ),
@@ -435,7 +434,6 @@ SELECT
          CASE WHEN r.oru_vol_rank - r.oru_size_rank < cfg.sniff_gap_limit THEN 'pass' ELSE 'fail' END
     END AS oru_sniff,
     ro.aa_source,
-    ha.hospital_aas,
     ha.hospital_aa_count,
     r.chain_hospital_count,
     -- Annualized: (28-day count / 28) * 365. Directional, not exact.
@@ -457,7 +455,7 @@ SELECT
          ) = 1 THEN 1 ELSE 0 END AS count_hospital_once
 FROM pair_rows ro
 JOIN ranked r ON r.aa = ro.aa
-JOIN hospital_aas ha ON ha.nys_facility_id = ro.nys_facility_id
+JOIN hospital_aa_counts ha ON ha.nys_facility_id = ro.nys_facility_id
 LEFT JOIN hospital_has_data hd ON hd.nys_facility_id = ro.nys_facility_id
 CROSS JOIN config cfg
 CROSS JOIN adt_days ad
