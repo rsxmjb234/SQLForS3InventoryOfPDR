@@ -1,7 +1,7 @@
 /*
-Expected cost/run: ~$0.70 (ONE inventory snapshot; Athena reads it three times,
-~140 GB)
-Expected runtime: ~2-3 minutes
+Expected cost/run: ~$1.15 (ONE inventory snapshot; Athena reads it five times,
+~234 GB)
+Expected runtime: ~3-4 minutes
 
 ANNUALIZING (directionally accurate, not exact)
 - PDR never deletes data, so any recent inventory snapshot holds everything. We
@@ -38,11 +38,17 @@ ONE ROW PER HOSPITAL PER AA
   When an AA is in more than one source, aa_source shows both.
 - Example, a Hixny hospital:      MIB      -> TRN, LAB, ADT
                                   MIBDOC   -> CCD
-- Example, a HealtheConnections hospital:
-                                  1025     -> roster AA, no data (stale code)
-                                  UPSTATE  -> ADT-file AA, the real CCD/TRN/LAB/ADT
-- Roster-only AAs with no data stay in as rows with zeros on purpose: they show
-  where Salesforce needs a refresh.
+- Example, a HealtheConnections hospital (Crouse, facility 636):
+                                  CROUSE         -> ADT-file AA, the real CCD/TRN/LAB/ADT
+                                  CROUSE-HOSP-2  -> dead Salesforce code, no data (hidden)
+                                  CROUSE-HOSP-3  -> dead Salesforce code, no data (hidden)
+- SILENT AA ROWS ARE HIDDEN: an AA that sends no CCD, TRN, LAB or ADT at all is not
+  shown as a row when the same hospital has data on another AA, so one hospital
+  does not look like several chains with N N N N rows beside the real one. A
+  hospital is never left without a row: if NONE of its AAs has data, its silent
+  row(s) stay so it shows up as a zero. Nothing is lost: hospital_aas still lists
+  every AA the hospital is known by (including the hidden ones), which is the list
+  of codes Salesforce needs to refresh. AA-level totals are unaffected.
 
 WHICH HOSPITALS ARE IN THE REPORT (~194 distinct)
 - The SFDC roster holds more than hospitals (imaging centers, extension clinics,
@@ -78,14 +84,15 @@ its SPARCS size says it should?"
   to tighten or loosen.
 
 COLUMNS, in output order:
-  qe, chain_name, chain_aa, hospital_name, nys_facility_id, roster_aas_listed,
+  qe, chain_name, chain_aa, hospital_name, nys_facility_id,
   chain_size_tier, sends_ccd, sends_trn, sends_lab, sends_adt, hospital_size_tier,
   ccd_sniff, adt_sniff, oru_sniff, then aa_source, hospital_aas, hospital_aa_count,
   chain_hospital_count, annual_ccd, annual_trn, annual_lab, annual_adt,
   hospital_annual_adt, volume_bucket_qes, count_chain_once, count_hospital_once.
-- roster_aas_listed: the AAs the Salesforce roster itself lists for this hospital.
-  hospital_aas (further right) is every AA the hospital has a row for, which also
-  includes the ADT-file AAs and the Hixny DOC AA.
+- hospital_aas is every AA the hospital is known by: the Salesforce roster AAs, plus
+  the ADT-file AAs and the Hixny DOC AA. It includes silent AAs whose rows are
+  hidden, so it can list more AAs than the hospital has rows; hospital_aa_count
+  is the matching count.
 - qe (the QE of the AA: the roster's QE when the roster lists the AA, otherwise
   the QE in the ADT file - TXD/techbd is shown as healthelink - and Hixny for DOC
   rows. Every hospital row of an AA shows the same label, "a/b" when its
@@ -94,7 +101,7 @@ COLUMNS, in output order:
   hospitals that also appear under another QE.),
   chain_name (guess = the AA's largest hospital + AA), chain_aa, aa_source,
   hospital_name, nys_facility_id
-- hospital_aas (every AA this hospital has a row for), hospital_aa_count
+- hospital_aas (every AA this hospital is known by, incl. hidden silent ones), hospital_aa_count
 - sends_ccd, sends_trn, sends_lab, sends_adt (Y/N: does this AA send that type at
   all in the window). LAB = lab results (ORU messages); in PDR they sit under the
   `lab` path segment, so there is no separate ORU column.
@@ -330,16 +337,6 @@ pair_rows AS (
                AND coalesce(v.ccd + v.trn + v.lab, 0) = 0)
 ),
 
--- The AAs the Salesforce roster itself lists for each hospital (before the ADT file
--- and Hixny DOC additions). With the HEC fix applied to the roster these are the
--- current codes.
-roster_aas AS (
-    SELECT nys_facility_id,
-           array_join(array_sort(array_agg(aa)), ',') AS roster_aas_listed
-    FROM roster_pairs
-    GROUP BY nys_facility_id
-),
-
 -- All the AAs a hospital has a row for.
 hospital_aas AS (
     SELECT nys_facility_id,
@@ -389,6 +386,17 @@ ranked AS (
         RANK() OVER (PARTITION BY (chain_lab > 0) ORDER BY chain_sparcs_sum DESC) AS oru_size_rank,
         RANK() OVER (PARTITION BY (chain_lab > 0) ORDER BY chain_lab DESC)        AS oru_vol_rank
     FROM chain_vol cv
+),
+
+-- Hospitals that have data (CCD, TRN, LAB or ADT) on at least one of their AAs.
+-- Used below to hide a hospital's SILENT AA rows (dead Salesforce codes such as
+-- CROUSE-HOSP-2 next to the live CROUSE), so one hospital does not look like
+-- several. A hospital is never left without a row.
+hospital_has_data AS (
+    SELECT DISTINCT pr.nys_facility_id
+    FROM pair_rows pr
+    JOIN ranked rk ON rk.aa = pr.aa
+    WHERE rk.chain_ccd > 0 OR rk.chain_trn > 0 OR rk.chain_lab > 0 OR rk.chain_adt_total > 0
 )
 
 SELECT
@@ -397,7 +405,6 @@ SELECT
     r.aa AS chain_aa,
     ro.hospital_name,
     ro.nys_facility_id,
-    rl.roster_aas_listed,
     CASE WHEN r.chain_sparcs_sum >= 8 THEN '03-Large'
          WHEN r.chain_sparcs_sum >= 4 THEN '02-Medium'
          ELSE '01-Small' END AS chain_size_tier,
@@ -444,7 +451,12 @@ SELECT
 FROM pair_rows ro
 JOIN ranked r ON r.aa = ro.aa
 JOIN hospital_aas ha ON ha.nys_facility_id = ro.nys_facility_id
-LEFT JOIN roster_aas rl ON rl.nys_facility_id = ro.nys_facility_id
+LEFT JOIN hospital_has_data hd ON hd.nys_facility_id = ro.nys_facility_id
 CROSS JOIN config cfg
 CROSS JOIN adt_days ad
+-- Hide a SILENT AA row (this AA sends no CCD, TRN, LAB or ADT at all) when the same
+-- hospital has data on another AA. Window functions below (count_chain_once,
+-- count_hospital_once) are evaluated after this filter, so they stay correct.
+WHERE NOT (r.chain_ccd = 0 AND r.chain_trn = 0 AND r.chain_lab = 0 AND r.chain_adt_total = 0
+           AND hd.nys_facility_id IS NOT NULL)
 ORDER BY r.qe ASC, ro.hospital_name ASC, ro.nys_facility_id ASC, r.aa ASC
