@@ -1,9 +1,6 @@
-*.txt
+# Data files never go to Git: exports, lookups and query results can contain
+# organization and facility data. Keep them local (and in S3 where needed).
+# Both spellings are listed so the rule holds whatever the extension's case.
 *.csv
-
-# Allow CSVs in FindingOrphanSources to be tracked
-!FindingOrphanSources/
-!FindingOrphanSources/*.csv
-# Allow the hospital volume/SPARCS analysis inputs and results to be tracked
-!PDRHospitalDataVolumneAnalaysisIncludingSparcsForSize/
-!PDRHospitalDataVolumneAnalaysisIncludingSparcsForSize/**/*.csv
+*.CSV
+*.txt
