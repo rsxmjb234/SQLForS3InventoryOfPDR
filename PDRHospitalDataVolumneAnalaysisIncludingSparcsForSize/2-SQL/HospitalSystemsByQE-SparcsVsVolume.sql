@@ -74,7 +74,8 @@ its SPARCS size says it should?"
       gap         = volume rank - size rank
   A big system sending little of a type has a big positive gap.
 - Result:
-      NULL    the system sends none of that type (nothing to test)
+      NULL    the system sends none of that type (nothing to test), or it is a
+              PART 2 AA (code ends in -2), which is skipped and not ranked
       'pass'  gap is under 20 places (sniff_gap_limit in the config block)
       'fail'  gap is 20 places or more (far less data than a system of that size
               should send)
@@ -363,7 +364,10 @@ chain_vol AS (
         max(lab) AS chain_lab,
         -- ADT is per hospital, so the AA total is the SUM of its hospitals.
         sum(adt_total) AS chain_adt_total,
-        max(volume_bucket_qes) AS volume_bucket_qes
+        max(volume_bucket_qes) AS volume_bucket_qes,
+        -- PART 2 (substance-use) feeds: HealtheConnections codes ending in -2. They carry
+        -- tiny volume by design, so they are left out of the sniff tests.
+        (aa LIKE '%-2') AS is_part2
     FROM pair_rows
     GROUP BY aa
 ),
@@ -379,12 +383,12 @@ chain_vol AS (
 ranked AS (
     SELECT
         cv.*,
-        RANK() OVER (PARTITION BY (chain_ccd > 0) ORDER BY chain_sparcs_sum DESC) AS ccd_size_rank,
-        RANK() OVER (PARTITION BY (chain_ccd > 0) ORDER BY chain_ccd DESC)        AS ccd_vol_rank,
-        RANK() OVER (PARTITION BY (chain_adt_total > 0) ORDER BY chain_sparcs_sum DESC) AS adt_size_rank,
-        RANK() OVER (PARTITION BY (chain_adt_total > 0) ORDER BY chain_adt_total DESC)  AS adt_vol_rank,
-        RANK() OVER (PARTITION BY (chain_lab > 0) ORDER BY chain_sparcs_sum DESC) AS oru_size_rank,
-        RANK() OVER (PARTITION BY (chain_lab > 0) ORDER BY chain_lab DESC)        AS oru_vol_rank
+        RANK() OVER (PARTITION BY (chain_ccd > 0 AND NOT is_part2) ORDER BY chain_sparcs_sum DESC) AS ccd_size_rank,
+        RANK() OVER (PARTITION BY (chain_ccd > 0 AND NOT is_part2) ORDER BY chain_ccd DESC)        AS ccd_vol_rank,
+        RANK() OVER (PARTITION BY (chain_adt_total > 0 AND NOT is_part2) ORDER BY chain_sparcs_sum DESC) AS adt_size_rank,
+        RANK() OVER (PARTITION BY (chain_adt_total > 0 AND NOT is_part2) ORDER BY chain_adt_total DESC)  AS adt_vol_rank,
+        RANK() OVER (PARTITION BY (chain_lab > 0 AND NOT is_part2) ORDER BY chain_sparcs_sum DESC) AS oru_size_rank,
+        RANK() OVER (PARTITION BY (chain_lab > 0 AND NOT is_part2) ORDER BY chain_lab DESC)        AS oru_vol_rank
     FROM chain_vol cv
 ),
 
@@ -417,14 +421,14 @@ SELECT
          ELSE '01-Small' END AS hospital_size_tier,
     -- SNIFF TESTS (system / AA level). NULL = this AA sends none of that type.
     -- pass = volume rank is less than sniff_gap_limit places worse than the SPARCS size rank.
-    CASE WHEN r.chain_ccd > 0 THEN
+    CASE WHEN r.chain_ccd > 0 AND NOT r.is_part2 THEN
          CASE WHEN r.ccd_vol_rank - r.ccd_size_rank < cfg.sniff_gap_limit THEN 'pass' ELSE 'fail' END
     END AS ccd_sniff,
-    CASE WHEN r.chain_adt_total > 0 THEN
+    CASE WHEN r.chain_adt_total > 0 AND NOT r.is_part2 THEN
          CASE WHEN r.adt_vol_rank - r.adt_size_rank < cfg.sniff_gap_limit THEN 'pass' ELSE 'fail' END
     END AS adt_sniff,
     -- ORU = LAB (same thing); measured on the lab-results volume.
-    CASE WHEN r.chain_lab > 0 THEN
+    CASE WHEN r.chain_lab > 0 AND NOT r.is_part2 THEN
          CASE WHEN r.oru_vol_rank - r.oru_size_rank < cfg.sniff_gap_limit THEN 'pass' ELSE 'fail' END
     END AS oru_sniff,
     ro.aa_source,
