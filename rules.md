@@ -23,10 +23,19 @@ Assigning Authority is parsed from the S3 key path:
 
 **Hixny "DOC" convention (hospital reporting).** In the `hixny` bucket, Hixny files
 a hospital's CCDs under its assigning authority with "DOC" added (for example
-`MIBDOC` for `MIB`, `AMHSAMCHDOC` for `AMHSAMCH`). Both belong to the same hospital,
-so when matching Hixny volume to the hospital roster, strip a trailing `DOC` from
-the AA (`MIBDOC` -> `MIB`). Apply it only to the hixny bucket. We follow Hixny's
-lead here instead of asking them to change. See
+`MIBDOC` for `MIB`, `AMHSAMCHDOC` for `AMHSAMCH`), and files everything else (TRN,
+LAB, ADT) under the base AA. In hospital reporting a Hixny hospital therefore gets
+TWO rows: one on the base AA (TRN, LAB, ADT) and one on the DOC AA (CCD). The DOC row
+is only shown when documents exist under it. Apply it to Hixny hospitals only. We
+follow Hixny's lead here instead of asking them to change.
+
+**One row per hospital per AA (hospital reporting).** A hospital can use more than
+one AA, and each gets its own row so the volume lands on the AA that carries it. A
+hospital's AAs come from the Salesforce roster, from the ADT counts file
+(`pdr_inventory.lookup_adt_counts`, the AA actually in use) and, for Hixny, the DOC
+AA. When the roster AA is stale (HealtheConnections moved from numeric codes to
+names such as UPSTATE or GUTHRIE), the roster row shows zero and the ADT-file row
+shows the real volume. See
 `PDRHospitalDataVolumneAnalaysisIncludingSparcsForSize/2-SQL/HospitalSystemsByQE-SparcsVsVolume.sql`.
 
 ### Data Type (Required)
