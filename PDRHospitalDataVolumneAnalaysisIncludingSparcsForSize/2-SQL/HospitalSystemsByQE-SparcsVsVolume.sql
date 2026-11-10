@@ -80,6 +80,9 @@ its SPARCS size says it should?"
       'fail'  gap is 20 places or more (far less data than a system of that size
               should send)
   A negative gap (more data than the size predicts) always passes.
+- NOT JUDGED: PART 2 AAs (codes ending in -2, substance-use feeds that are small by
+  design) get NULL and are left out of the ranks. Hospitals with no SPARCS size are
+  not in the report at all, so they are never judged either.
 - The limit counts places within the list of senders of that type, so it is a bigger
   slice of a short list (CCD has far fewer senders than ADT). Change sniff_gap_limit
   to tighten or loosen.
